@@ -1,0 +1,19 @@
+{
+  "userId": "user_12345",
+  "email": "john.doe@example.com",
+  "name": "Sarah Johnson",
+  "occasionType": "Wedding",
+  "speakerName": "Emily Johnson",
+  "relationship": "Maid of Honor (Best Friend)",
+  "tone": "Heartfelt and emotional with touches of humor",
+  "duration": 5,
+  "audienceSize": "150-200",
+  "keyPoints": [
+    "How we met in college during freshman orientation",
+    "Our road trip across the country after graduation",
+    "Her unwavering support during my difficult times",
+    "The moment I knew she found her soulmate"
+  ],
+  "specialMoments": "I remember the day Sarah called me crying tears of joy to tell me about the proposal. She said 'He's the one, Em. He's really the one.' I had never heard her so happy. From that moment, I knew this day would be magical.",
+  "customDetails": "Sarah loves to laugh and doesn't take herself too seriously. The groom, Michael, is a software engineer who swept her off her feet with his kindness and terrible dad jokes. They have a golden retriever named Biscuit who was their 'practice baby'. Please incorporate their love for travel and adventure - they've visited 15 countries together."
+}

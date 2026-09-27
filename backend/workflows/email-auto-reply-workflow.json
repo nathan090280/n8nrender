@@ -1,0 +1,151 @@
+{
+  "name": "SuperSpeech - Email Auto Reply",
+  "nodes": [
+    {
+      "parameters": {
+        "protocol": "imap",
+        "host": "spacemail.com",
+        "port": 993,
+        "ssl": true,
+        "user": "={{$env.EMAIL_USER}}",
+        "password": "={{$env.EMAIL_PASSWORD}}",
+        "options": {
+          "allowUnauthorizedCerts": false
+        }
+      },
+      "name": "Email Trigger - IMAP",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.from.address }}",
+              "operation": "notContains",
+              "value2": "superspeech.biz"
+            }
+          ]
+        }
+      },
+      "name": "Filter Out Internal Emails",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.BACKEND_URL}}/api/webhooks/incoming-email",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "options": {},
+        "bodyParametersJson": "={\n  \"from\": \"{{ $json.from.address }}\",\n  \"subject\": \"{{ $json.subject }}\",\n  \"text\": \"{{ $json.text }}\",\n  \"html\": \"{{ $json.html }}\",\n  \"date\": \"{{ $json.date }}\"\n}"
+      },
+      "name": "Call AI Agent for Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "name": "Merge Email Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Check Reply Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Email Trigger - IMAP": {
+      "main": [
+        [
+          {
+            "node": "Filter Out Internal Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Out Internal Emails": {
+      "main": [
+        [
+          {
+            "node": "Call AI Agent for Reply",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Email Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Call AI Agent for Reply": {
+      "main": [
+        [
+          {
+            "node": "Merge Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Email Data": {
+      "main": [
+        [
+          {
+            "node": "Check Reply Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

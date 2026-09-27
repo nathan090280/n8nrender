@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: superspeech-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8080
+      - key: RENDER_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        value: superspeech-e7bde
+      - key: FIREBASE_CLIENT_EMAIL
+        value: firebase-adminsdk-fbsvc@superspeech-e7bde.iam.gserviceaccount.com
+      - key: FIREBASE_DATABASE_URL
+        value: https://superspeech-e7bde.firebaseapp.com
+      - key: EMAIL_FROM
+        value: hello@superspeech.biz
+      - key: EMAIL_HOST
+        value: spacemail.com
+      - key: EMAIL_PORT
+        value: 587
+      - key: EMAIL_SECURE
+        value: false
+      - key: EMAIL_USER
+        value: hello@superspeech.biz
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: OPENHANDS_API_KEY
+        sync: false
+      - key: OPENHANDS_API_URL
+        value: https://api.openhands.com/v1
+      - key: N8N_WEBHOOK_URL
+        generateValue: true
+      - key: DASHBOARD_URL
+        value: https://superspeech.biz/dashboard
+      - key: API_SECRET_KEY
+        generateValue: true
+    healthCheckPath: /health
+    autoDeploy: true
