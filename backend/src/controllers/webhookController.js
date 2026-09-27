@@ -52,35 +52,16 @@ async function handleQuestionnaireCompletion(req, res) {
     
     console.log('Generating speech with AI...');
     
-    // Generate fallback speech FIRST (always works)
-    const fallbackSpeech = `Dear friends and family,
-
-Thank you all for being here today to celebrate this special ${normalizedData.occasionType} occasion.
-
-As ${normalizedData.relationship} of ${normalizedData.recipientName}, I'm honored to say a few words. The moments we've shared together have been truly memorable, and this day is no exception.
-
-${normalizedData.recipientName}, you bring joy and meaning to everyone around you. Your kindness and spirit inspire us all.
-
-On this special day, I wish you all the happiness in the world. May this occasion be filled with wonderful memories and surrounded by the people who care about you most.
-
-Here's to ${normalizedData.recipientName}!
-
-Cheers!`;
+    // Generate AI speech - NO FALLBACK, this is what customers are paying for!
+    const speechResult = await aiService.generateSpeech(normalizedData);
     
-    let speechContent = fallbackSpeech; // Default to fallback
-    
-    // Try to generate AI speech (optional)
-    try {
-      const speechResult = await aiService.generateSpeech(normalizedData);
-      if (speechResult && speechResult.success && speechResult.speech) {
-        speechContent = speechResult.speech;
-        console.log('✓ AI speech generated successfully');
-      } else {
-        console.log('Using fallback speech (AI did not return valid content)');
-      }
-    } catch (aiError) {
-      console.log('Using fallback speech (AI generation failed):', aiError.message);
+    if (!speechResult || !speechResult.success || !speechResult.speech) {
+      // AI FAILED - this is an error, not acceptable
+      throw new Error('AI speech generation failed: ' + (speechResult?.error || 'No speech content returned'));
     }
+    
+    const speechContent = speechResult.speech;
+    console.log('✓ AI speech generated successfully');
     
     const speechData = {
       questionnaireId: savedQuestionnaire.questionnaireId,

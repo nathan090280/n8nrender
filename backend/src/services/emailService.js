@@ -1,13 +1,14 @@
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  host: process.env.EMAIL_HOST || 'mail.spaceship.com',
   port: parseInt(process.env.EMAIL_PORT) || 587,
-  secure: false,
+  secure: false, // Use STARTTLS on port 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
   },
+  requireTLS: true,
   tls: {
     rejectUnauthorized: false
   }
@@ -27,9 +28,9 @@ async function sendSpeechEmail(recipientEmail, recipientName, speechContent, occ
     console.log('✓ Speech email sent successfully:', info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('⚠ Email sending failed (will continue without email):', error.message);
-    // Don't throw - return success anyway so the rest of the flow continues
-    return { success: false, messageId: null, error: error.message };
+    console.error('❌ Email sending FAILED:', error.message);
+    // THROW the error - email delivery is part of the service!
+    throw new Error('Failed to send email: ' + error.message);
   }
 }
 

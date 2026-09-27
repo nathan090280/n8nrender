@@ -43,28 +43,38 @@ Please write a complete, well-structured speech that:
 Write the speech now:`;
 
   try {
+    // Use OpenAI API directly
     const response = await axios.post(
-      `${process.env.OPENHANDS_API_URL}/conversations`,
+      'https://api.openai.com/v1/chat/completions',
       {
+        model: 'gpt-4',
         messages: [
+          {
+            role: 'system',
+            content: 'You are a professional speechwriter who creates heartfelt, engaging speeches for special occasions.'
+          },
           {
             role: 'user',
             content: prompt
           }
         ],
-        model: 'gpt-4',
         temperature: 0.8,
         max_tokens: 2000
       },
       {
         headers: {
-          'Authorization': `Bearer ${process.env.OPENHANDS_API_KEY}`,
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 30000 // 30 second timeout
       }
     );
 
-    const speechContent = response.data.choices?.[0]?.message?.content || response.data.response;
+    const speechContent = response.data.choices?.[0]?.message?.content;
+    
+    if (!speechContent) {
+      throw new Error('OpenAI returned empty response');
+    }
     
     return {
       success: true,
@@ -73,16 +83,16 @@ Write the speech now:`;
         occasionType,
         recipientName,
         speakerName,
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
+        model: 'gpt-4'
       }
     };
   } catch (error) {
-    console.error('Error generating speech with AI:', error.response?.data || error.message);
+    console.error('❌ AI speech generation FAILED:', error.response?.data || error.message);
     
     return {
       success: false,
-      error: error.message,
-      fallbackSpeech: generateFallbackSpeech(questionnaireData)
+      error: error.response?.data?.error?.message || error.message
     };
   }
 }
