@@ -66,6 +66,7 @@ async function handleQuestionnaireCompletion(req, res) {
     const speechData = {
       questionnaireId: savedQuestionnaire.questionnaireId,
       userId,
+      userEmail: email,  // For dashboard query
       recipientEmail: email,
       recipientName: name,
       speechContent,
