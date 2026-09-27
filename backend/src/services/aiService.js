@@ -43,37 +43,35 @@ Please write a complete, well-structured speech that:
 Write the speech now:`;
 
   try {
-    // Use OpenAI API directly
+    // Use Anthropic Claude API
     const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
+      'https://api.anthropic.com/v1/messages',
       {
-        model: 'gpt-4',
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 2000,
         messages: [
-          {
-            role: 'system',
-            content: 'You are a professional speechwriter who creates heartfelt, engaging speeches for special occasions.'
-          },
           {
             role: 'user',
             content: prompt
           }
         ],
-        temperature: 0.8,
-        max_tokens: 2000
+        system: 'You are a professional speechwriter who creates heartfelt, engaging speeches for special occasions.',
+        temperature: 0.8
       },
       {
         headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
           'Content-Type': 'application/json'
         },
         timeout: 30000 // 30 second timeout
       }
     );
 
-    const speechContent = response.data.choices?.[0]?.message?.content;
+    const speechContent = response.data.content?.[0]?.text;
     
     if (!speechContent) {
-      throw new Error('OpenAI returned empty response');
+      throw new Error('Anthropic returned empty response');
     }
     
     return {
@@ -84,7 +82,7 @@ Write the speech now:`;
         recipientName,
         speakerName,
         generatedAt: new Date().toISOString(),
-        model: 'gpt-4'
+        model: 'claude-3-5-sonnet'
       }
     };
   } catch (error) {
