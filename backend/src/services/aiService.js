@@ -5,42 +5,79 @@ async function generateSpeech(questionnaireData) {
     occasionType,
     recipientName,
     speakerName,
+    subjectNames,
     relationship,
     tone,
     duration,
     keyPoints,
     specialMoments,
     audienceSize,
-    customDetails
+    customDetails,
+    questionnaire
   } = questionnaireData;
 
-  const prompt = `You are a professional speechwriter. Create a heartfelt and engaging ${occasionType} speech with the following details:
+  // Define tone-specific instructions
+  const toneInstructions = {
+    serious: 'Use a formal, respectful, and sincere tone. Focus on meaningful moments, life lessons, and heartfelt emotions. Avoid humor. Be dignified and profound.',
+    humorous: 'Use humor, wit, and comedic timing throughout. Include funny anecdotes, playful jabs (all in good taste), and entertaining stories. Make the audience laugh while staying appropriate.',
+    emotional: 'Use deeply emotional and touching language. Focus on love, gratitude, and meaningful connections. Include tear-jerking moments and heartfelt expressions. Make people feel.',
+    'pure banter': 'Use playful teasing, light roasting, and witty banter throughout. Include inside jokes, funny observations, and comedic storytelling. Keep it fun and entertaining while staying respectful.'
+  };
 
-Speaker: ${speakerName}
-For: ${recipientName}
+  const toneInstruction = toneInstructions[tone?.toLowerCase()] || toneInstructions.serious;
+
+  // Create varied opening styles (random selection)
+  const openingStyles = [
+    'Start with a powerful personal story',
+    'Begin with a thought-provoking question',
+    'Open with a memorable quote that relates to the occasion',
+    'Start with a vivid description of a specific moment',
+    'Begin by addressing the audience directly and personally'
+  ];
+  const randomOpening = openingStyles[Math.floor(Math.random() * openingStyles.length)];
+
+  // Build detailed prompt with questionnaire data
+  let questionnaireDetails = '';
+  if (questionnaire && typeof questionnaire === 'object') {
+    questionnaireDetails = Object.entries(questionnaire)
+      .map(([key, value]) => `${key}: ${value}`)
+      .join('\n');
+  }
+
+  const subjectLine = subjectNames ? `Subject(s) of speech: ${subjectNames}` : '';
+  const speakerLine = speakerName ? `Speaker: ${speakerName}` : '';
+  const recipientLine = recipientName ? `Primary person being honored: ${recipientName}` : '';
+
+  const prompt = `You are a world-class professional speechwriter. Write a unique, compelling ${occasionType} speech.
+
+${subjectLine}
+${speakerLine}
+${recipientLine}
 Relationship: ${relationship}
-Tone: ${tone}
-Duration: ${duration} minutes
-Audience Size: ${audienceSize}
+Occasion Type: ${occasionType}
 
-Key Points to Include:
-${keyPoints ? keyPoints.map((point, i) => `${i + 1}. ${point}`).join('\n') : 'N/A'}
+CRITICAL - TONE REQUIREMENT: ${tone?.toUpperCase()}
+${toneInstruction}
 
-Special Moments to Mention:
-${specialMoments || 'N/A'}
+Detailed Information:
+${questionnaireDetails || customDetails || 'Use the details provided above'}
 
-Additional Details:
-${customDetails || 'N/A'}
+SPECIFIC REQUIREMENTS:
+1. OPENING STYLE: ${randomOpening} (make it unique and engaging)
+2. TONE: Strictly maintain a ${tone} tone from start to finish
+3. LENGTH: Approximately ${duration} minutes (${duration * 130} words)
+4. STRUCTURE: Clear beginning, middle with stories/anecdotes, and powerful conclusion
+5. PERSONALIZATION: Weave in specific details from the questionnaire naturally
+6. AUTHENTICITY: Make it sound genuine, not AI-generated or generic
+7. VARIETY: Do NOT use clichéd openings - be creative and original
 
-Please write a complete, well-structured speech that:
-1. Has a strong opening that captures attention
-2. Includes personal anecdotes and heartfelt moments
-3. Maintains the requested tone throughout
-4. Is approximately ${duration} minutes when read aloud (roughly ${duration * 130} words)
-5. Has a memorable conclusion
-6. Feels natural and authentic
+AVOID:
+- Generic phrases like "Good evening everyone" or "I'm honored to be here"
+- Cookie-cutter speech structures
+- Overused quotes
+- Predictable transitions
 
-Write the speech now:`;
+Write a completely original, ${tone} speech now:`;
 
   try {
     // Use Anthropic Claude Sonnet 4.5 API

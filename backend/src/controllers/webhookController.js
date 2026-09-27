@@ -38,14 +38,16 @@ async function handleQuestionnaireCompletion(req, res) {
       name,
       userId,
       occasionType: questionnaireData.order?.specificOccasion || questionnaireData.occasionType || 'special occasion',
-      recipientName: name,
-      speakerName: name,
+      speakerName: name, // Person giving the speech
+      recipientName: questionnaireData.questionnaire?.subjectNames || name, // Subject(s) of the speech
+      subjectNames: questionnaireData.questionnaire?.subjectNames || name, // For couples/honorees
       relationship: questionnaireData.questionnaire?.relationship || 'friend',
       package: questionnaireData.order?.package,
-      tone: questionnaireData.order?.tone || 'heartfelt',
+      tone: questionnaireData.order?.tone || 'serious', // Pass tone from order
       category: questionnaireData.order?.category,
-      duration: 3,
-      audienceSize: 'medium'
+      duration: questionnaireData.order?.package === 'keynote' ? 5 : (questionnaireData.order?.package === 'speech' ? 4 : 3),
+      audienceSize: 'medium',
+      questionnaire: questionnaireData.questionnaire || {} // Pass full questionnaire object
     };
     
     const savedQuestionnaire = await firebaseService.saveQuestionnaire(userId, normalizedData);
