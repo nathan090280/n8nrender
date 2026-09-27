@@ -24,11 +24,12 @@ async function sendSpeechEmail(recipientEmail, recipientName, speechContent, occ
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log('Speech email sent:', info.messageId);
+    console.log('✓ Speech email sent successfully:', info.messageId);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending speech email:', error);
-    throw error;
+    console.error('⚠ Email sending failed (will continue without email):', error.message);
+    // Don't throw - return success anyway so the rest of the flow continues
+    return { success: false, messageId: null, error: error.message };
   }
 }
 

@@ -38,22 +38,48 @@ async function handleQuestionnaireCompletion(req, res) {
       name,
       userId,
       occasionType: questionnaireData.order?.specificOccasion || questionnaireData.occasionType || 'special occasion',
+      recipientName: name,
+      speakerName: name,
+      relationship: questionnaireData.questionnaire?.relationship || 'friend',
       package: questionnaireData.order?.package,
-      tone: questionnaireData.order?.tone,
-      category: questionnaireData.order?.category
+      tone: questionnaireData.order?.tone || 'heartfelt',
+      category: questionnaireData.order?.category,
+      duration: 3,
+      audienceSize: 'medium'
     };
     
     const savedQuestionnaire = await firebaseService.saveQuestionnaire(userId, normalizedData);
     
     console.log('Generating speech with AI...');
-    const speechResult = await aiService.generateSpeech(normalizedData);
     
-    let speechContent;
-    if (speechResult.success) {
-      speechContent = speechResult.speech;
-    } else {
-      console.warn('AI generation failed, using fallback speech');
-      speechContent = speechResult.fallbackSpeech;
+    // Generate fallback speech FIRST (always works)
+    const fallbackSpeech = `Dear friends and family,
+
+Thank you all for being here today to celebrate this special ${normalizedData.occasionType} occasion.
+
+As ${normalizedData.relationship} of ${normalizedData.recipientName}, I'm honored to say a few words. The moments we've shared together have been truly memorable, and this day is no exception.
+
+${normalizedData.recipientName}, you bring joy and meaning to everyone around you. Your kindness and spirit inspire us all.
+
+On this special day, I wish you all the happiness in the world. May this occasion be filled with wonderful memories and surrounded by the people who care about you most.
+
+Here's to ${normalizedData.recipientName}!
+
+Cheers!`;
+    
+    let speechContent = fallbackSpeech; // Default to fallback
+    
+    // Try to generate AI speech (optional)
+    try {
+      const speechResult = await aiService.generateSpeech(normalizedData);
+      if (speechResult && speechResult.success && speechResult.speech) {
+        speechContent = speechResult.speech;
+        console.log('✓ AI speech generated successfully');
+      } else {
+        console.log('Using fallback speech (AI did not return valid content)');
+      }
+    } catch (aiError) {
+      console.log('Using fallback speech (AI generation failed):', aiError.message);
     }
     
     const speechData = {
