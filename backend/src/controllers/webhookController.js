@@ -69,7 +69,7 @@ async function handleQuestionnaireCompletion(req, res) {
       recipientEmail: email,
       recipientName: name,
       speechContent,
-      occasionType: questionnaireData.occasionType,
+      occasionType: normalizedData.occasionType,
       metadata: speechResult.metadata
     };
     
@@ -80,7 +80,7 @@ async function handleQuestionnaireCompletion(req, res) {
       email,
       name,
       speechContent,
-      questionnaireData.occasionType || 'special occasion'
+      normalizedData.occasionType
     );
     
     await firebaseService.updateQuestionnaireStatus(
@@ -97,7 +97,7 @@ async function handleQuestionnaireCompletion(req, res) {
       await firebaseService.saveDashboardData(userId, {
         type: 'speech_generated',
         speechContent,
-        occasionType: questionnaireData.occasionType,
+        occasionType: normalizedData.occasionType,
         recipientName: name,
         emailSent: true
       });
