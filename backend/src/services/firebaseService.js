@@ -26,11 +26,16 @@ async function saveQuestionnaire(userId, questionnaireData) {
 async function saveSpeech(userId, speechData) {
   try {
     const speechRef = db.collection('speeches').doc();
+    const now = new Date().toISOString();
+    const PROCESSING_DELAY_SECONDS = 20; // Configurable delay
+    const completionTime = new Date(Date.now() + PROCESSING_DELAY_SECONDS * 1000).toISOString();
+    
     const data = {
       ...speechData,
       userId,
-      createdAt: new Date().toISOString(),
-      status: 'completed'
+      createdAt: now,
+      status: 'in_progress',
+      estimatedCompletionAt: completionTime
     };
     
     await speechRef.set(data);
@@ -38,9 +43,22 @@ async function saveSpeech(userId, speechData) {
     if (userId) {
       await db.collection('users').doc(userId).set({
         lastSpeechId: speechRef.id,
-        updatedAt: new Date().toISOString()
+        updatedAt: now
       }, { merge: true });
     }
+    
+    // Schedule update to 'completed' status after delay
+    setTimeout(async () => {
+      try {
+        await speechRef.update({
+          status: 'completed',
+          completedAt: new Date().toISOString()
+        });
+        console.log(`✓ Speech ${speechRef.id} marked as completed`);
+      } catch (err) {
+        console.error(`Failed to mark speech ${speechRef.id} as completed:`, err.message);
+      }
+    }, PROCESSING_DELAY_SECONDS * 1000);
     
     return {
       success: true,
