@@ -11,7 +11,10 @@ const transporter = nodemailer.createTransport({
   requireTLS: true,
   tls: {
     rejectUnauthorized: false
-  }
+  },
+  connectionTimeout: 10000, // 10 second connection timeout
+  greetingTimeout: 10000,   // 10 second greeting timeout
+  socketTimeout: 10000       // 10 second socket timeout
 });
 
 async function sendSpeechEmail(recipientEmail, recipientName, speechContent, occasionType) {

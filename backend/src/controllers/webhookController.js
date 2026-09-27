@@ -75,21 +75,31 @@ async function handleQuestionnaireCompletion(req, res) {
     
     await firebaseService.saveSpeech(userId, speechData);
     
-    console.log('Sending speech email to:', email);
-    const emailResult = await emailService.sendSpeechEmail(
-      email,
-      name,
-      speechContent,
-      normalizedData.occasionType
-    );
+    // Try to send email but don't fail the whole request if it fails
+    let emailSent = false;
+    let emailMessageId = null;
+    try {
+      console.log('Sending speech email to:', email);
+      const emailResult = await emailService.sendSpeechEmail(
+        email,
+        name,
+        speechContent,
+        normalizedData.occasionType
+      );
+      emailSent = true;
+      emailMessageId = emailResult.messageId;
+      console.log('✓ Email sent successfully');
+    } catch (emailError) {
+      console.error('⚠️ Email failed but continuing:', emailError.message);
+    }
     
     await firebaseService.updateQuestionnaireStatus(
       savedQuestionnaire.questionnaireId,
       'completed',
       { 
-        speechSent: true,
-        emailSentAt: new Date().toISOString(),
-        emailMessageId: emailResult.messageId
+        speechSent: emailSent,
+        emailSentAt: emailSent ? new Date().toISOString() : null,
+        emailMessageId: emailMessageId
       }
     );
     
@@ -99,15 +109,15 @@ async function handleQuestionnaireCompletion(req, res) {
         speechContent,
         occasionType: normalizedData.occasionType,
         recipientName: name,
-        emailSent: true
+        emailSent: emailSent
       });
     }
     
     return res.json({
       success: true,
-      message: 'Speech generated and sent successfully',
+      message: emailSent ? 'Speech generated and sent successfully' : 'Speech generated and saved (email failed)',
       questionnaireId: savedQuestionnaire.questionnaireId,
-      emailSent: true,
+      emailSent: emailSent,
       dashboardUpdated: !!userId
     });
     
