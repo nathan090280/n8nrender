@@ -47,8 +47,8 @@ Write the speech now:`;
     const response = await axios.post(
       'https://api.anthropic.com/v1/messages',
       {
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2000,
+        model: 'claude-3-5-sonnet-latest',
+        max_tokens: 4000,
         messages: [
           {
             role: 'user',
