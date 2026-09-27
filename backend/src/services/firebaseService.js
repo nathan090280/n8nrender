@@ -36,10 +36,10 @@ async function saveSpeech(userId, speechData) {
     await speechRef.set(data);
     
     if (userId) {
-      await db.collection('users').doc(userId).update({
+      await db.collection('users').doc(userId).set({
         lastSpeechId: speechRef.id,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
     }
     
     return {
