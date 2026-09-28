@@ -249,7 +249,7 @@ Return only the revised speech text, no explanations or meta-commentary.`;
         'Authorization': `Bearer ${process.env.OPENHANDS_API_KEY || process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4.5',
         messages: [
           {
             role: 'user',
@@ -309,7 +309,7 @@ Write only the reply email body, no subject line or signature.`;
         'Authorization': `Bearer ${process.env.OPENHANDS_API_KEY || process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4.5',
         messages: [
           {
             role: 'user',
