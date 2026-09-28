@@ -196,6 +196,103 @@ async function handleIncomingEmail(req, res) {
   }
 }
 
+async function handleEditRequest(req, res) {
+  try {
+    const { speechId, originalSpeech, editRequest, userEmail, packageTier, editCount } = req.body;
+    
+    console.log('Received edit request for speech:', speechId);
+    
+    if (!speechId || !originalSpeech || !editRequest || !userEmail) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+    
+    // Generate edited speech using AI
+    const editedSpeech = await aiService.editSpeech(originalSpeech, editRequest);
+    
+    // Update speech in Firebase with edited version
+    await firebaseService.updateSpeechWithEdit(speechId, {
+      speechContent: editedSpeech,
+      editCount: editCount,
+      editHistory: {
+        previousVersion: originalSpeech,
+        editRequest: editRequest,
+        editedAt: new Date().toISOString()
+      }
+    });
+    
+    // Send email with updated speech
+    await emailService.sendUpdatedSpeech(userEmail, editedSpeech, editCount);
+    
+    console.log('Speech edited and sent successfully');
+    
+    return res.json({
+      success: true,
+      message: 'Speech edited successfully',
+      editCount: editCount
+    });
+  } catch (error) {
+    console.error('Edit request error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+async function handleContactForm(req, res) {
+  try {
+    const { name, email, subject, message } = req.body;
+    
+    console.log('Received contact form:', { name, email, subject });
+    
+    if (!name || !email || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+    
+    // Generate AI reply
+    const aiReply = await aiService.generateContactReply(subject, message);
+    
+    // Send reply to user
+    await emailService.sendContactReply(email, name, subject, message, aiReply);
+    
+    // Send copy to business email
+    await emailService.sendContactCopyToBusiness(name, email, subject, message, aiReply);
+    
+    // Save to Firebase for dashboard (if user is logged in)
+    if (req.body.userId) {
+      await firebaseService.saveContactInteraction({
+        userId: req.body.userId,
+        name,
+        email,
+        subject,
+        message,
+        aiReply,
+        createdAt: new Date().toISOString()
+      });
+    }
+    
+    console.log('Contact form processed and reply sent');
+    
+    return res.json({
+      success: true,
+      message: 'Thank you for your message. We\'ve sent a reply to your email.',
+      reply: aiReply
+    });
+  } catch (error) {
+    console.error('Contact form error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
 async function handleTestWebhook(req, res) {
   return res.json({
     success: true,
@@ -208,5 +305,7 @@ async function handleTestWebhook(req, res) {
 module.exports = {
   handleQuestionnaireCompletion,
   handleIncomingEmail,
+  handleEditRequest,
+  handleContactForm,
   handleTestWebhook
 };

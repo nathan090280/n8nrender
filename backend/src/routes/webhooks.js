@@ -6,6 +6,10 @@ router.post('/questionnaire-completed', webhookController.handleQuestionnaireCom
 
 router.post('/incoming-email', webhookController.handleIncomingEmail);
 
+router.post('/edit-request', webhookController.handleEditRequest);
+
+router.post('/contact-form', webhookController.handleContactForm);
+
 router.post('/test', webhookController.handleTestWebhook);
 router.get('/test', webhookController.handleTestWebhook);
 

@@ -226,7 +226,123 @@ In the meantime, if you have questions about your speech order, you can:
 We appreciate your patience and look forward to helping you create the perfect speech!`;
 }
 
+async function editSpeech(originalSpeech, editRequest) {
+  console.log('Editing speech with AI...');
+  
+  const prompt = `You are a professional speechwriter. A customer has requested edits to their speech.
+
+ORIGINAL SPEECH:
+${originalSpeech}
+
+REQUESTED CHANGES:
+${editRequest}
+
+Please revise the speech according to the customer's requests. Keep the same overall structure and tone unless specifically asked to change it. Make the requested modifications while maintaining the quality and professionalism of the speech.
+
+Return only the revised speech text, no explanations or meta-commentary.`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENHANDS_API_KEY || process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 2000,
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`AI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const editedSpeech = data.choices[0].message.content.trim();
+    
+    console.log('Speech edited successfully');
+    return editedSpeech;
+  } catch (error) {
+    console.error('Error editing speech with AI:', error);
+    return originalSpeech + '\n\n[Edit request received but could not be processed. Please contact hello@superspeech.biz for manual editing.]';
+  }
+}
+
+async function generateContactReply(subject, message) {
+  console.log('Generating AI reply for contact form...');
+  
+  const prompt = `You are a helpful customer service representative for SuperSpeech, a professional speechwriting service. 
+
+A customer has sent the following message:
+
+SUBJECT: ${subject || 'General Inquiry'}
+
+MESSAGE:
+${message}
+
+Write a helpful, professional, and friendly reply. Address their concerns or questions directly. Do NOT:
+- Promise refunds unless they explicitly mention a refund
+- Make commitments about specific timelines without knowing our actual policies
+- Be overly apologetic or defensive
+
+DO:
+- Be warm and helpful
+- Provide useful information
+- Suggest they email hello@superspeech.biz for specific account or order issues
+- Keep the tone conversational but professional
+
+Write only the reply email body, no subject line or signature.`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENHANDS_API_KEY || process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`AI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const reply = data.choices[0].message.content.trim();
+    
+    console.log('Contact reply generated successfully');
+    return reply;
+  } catch (error) {
+    console.error('Error generating contact reply:', error);
+    return `Thank you for reaching out to SuperSpeech!
+
+We've received your message and will get back to you within 24 hours. In the meantime, if you have any urgent questions about your order, please email us directly at hello@superspeech.biz.
+
+We appreciate your patience and look forward to helping you!`;
+  }
+}
+
 module.exports = {
   generateSpeech,
-  generateEmailReply
+  generateEmailReply,
+  editSpeech,
+  generateContactReply
 };
