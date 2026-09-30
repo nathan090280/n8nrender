@@ -1,6 +1,7 @@
 const aiService = require('../services/aiService');
 const emailService = require('../services/emailService');
 const firebaseService = require('../services/firebaseService');
+const { processInboundEmail } = require('../services/inboundEmailService');
 
 async function handleQuestionnaireCompletion(req, res) {
   try {
@@ -143,43 +144,16 @@ async function handleIncomingEmail(req, res) {
     console.log('Received incoming email:', { from: emailData.from, subject: emailData.subject });
     
     const { from, subject, text, html } = emailData;
-    
+
     if (!from || (!text && !html)) {
       return res.status(400).json({
         success: false,
         error: 'Missing required email fields'
       });
     }
-    
-    const emailContent = text || html;
-    
-    console.log('Generating AI reply for email from:', from);
-    const replyResult = await aiService.generateEmailReply(emailContent, from, subject);
-    
-    let replyContent;
-    if (replyResult.success) {
-      replyContent = replyResult.reply;
-    } else {
-      console.warn('AI reply generation failed, using fallback');
-      replyContent = replyResult.fallbackReply;
-    }
-    
-    console.log('Sending auto-reply to:', from);
-    const emailResult = await emailService.sendAutoReply(
-      from,
-      replyContent,
-      `Re: ${subject || 'Your SuperSpeech Inquiry'}`
-    );
-    
-    await firebaseService.saveEmailInteraction({
-      from,
-      subject,
-      originalContent: emailContent,
-      replyContent,
-      replySent: true,
-      emailMessageId: emailResult.messageId
-    });
-    
+
+    await processInboundEmail({ from, subject, text, html });
+
     return res.json({
       success: true,
       message: 'Email reply sent successfully',

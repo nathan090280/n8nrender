@@ -9,6 +9,7 @@ const rateLimit = require('express-rate-limit');
 const webhookRoutes = require('./routes/webhooks');
 const emailService = require('./services/emailService');
 const firebaseService = require('./services/firebaseService');
+const imapPoller = require('./services/imapPoller');
 const axios = require('axios');
 const { db } = require('./config/firebase');
 
@@ -242,7 +243,10 @@ async function startServer() {
       firebaseService.markStaleSpeechesCompleted().catch(err =>
         console.warn('Stale speech sweep failed:', err.message));
     }, 60 * 1000);
-    
+
+    // Poll the Spacemail inbox for unread customer emails and auto-reply
+    imapPoller.start();
+
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`
 ╔══════════════════════════════════════════╗
