@@ -8,6 +8,8 @@ const rateLimit = require('express-rate-limit');
 
 const webhookRoutes = require('./routes/webhooks');
 const emailService = require('./services/emailService');
+const firebaseService = require('./services/firebaseService');
+const axios = require('axios');
 const { db } = require('./config/firebase');
 
 const app = express();
@@ -50,12 +52,43 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Webhook endpoints require the shared API key (sent by the site's frontend)
+app.use('/api/webhooks', (req, res, next) => {
+  const configuredKey = process.env.API_SECRET_KEY;
+  if (configuredKey && req.headers['x-api-key'] !== configuredKey) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  next();
+});
+
 app.use('/api/webhooks', webhookRoutes);
 
-// Dashboard endpoint - fetch user's orders, speeches, and messages
+// Dashboard endpoint - requires the logged-in user's Netlify Identity JWT.
+// The token is verified against the site's own Netlify Identity service,
+// then the verified email must match the requested one.
 app.get('/api/dashboard/:email', async (req, res) => {
   try {
     const userEmail = decodeURIComponent(req.params.email);
+
+    const authHeader = req.headers.authorization || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    let verifiedEmail = null;
+    try {
+      const identityResp = await axios.get('https://superspeech.biz/.netlify/identity/user', {
+        headers: { Authorization: authHeader },
+        timeout: 10000
+      });
+      verifiedEmail = identityResp.data && identityResp.data.email;
+    } catch (err) {
+      return res.status(401).json({ success: false, error: 'Invalid or expired session - please log in again' });
+    }
+
+    if (!verifiedEmail || verifiedEmail.toLowerCase() !== userEmail.toLowerCase()) {
+      return res.status(403).json({ success: false, error: 'Not authorised to view this dashboard' });
+    }
     
     const orders = [];
     const speeches = [];
@@ -197,6 +230,18 @@ async function startServer() {
     }
     
     console.log('✓ Firebase initialized');
+    
+    // Recover any speeches stuck 'in_progress' (e.g. if the server
+    // restarted mid-generation) - sweep at boot and every minute
+    try {
+      await firebaseService.markStaleSpeechesCompleted();
+    } catch (e) {
+      console.warn('Stale speech sweep failed:', e.message);
+    }
+    setInterval(() => {
+      firebaseService.markStaleSpeechesCompleted().catch(err =>
+        console.warn('Stale speech sweep failed:', err.message));
+    }, 60 * 1000);
     
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`

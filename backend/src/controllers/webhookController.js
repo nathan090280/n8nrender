@@ -209,25 +209,67 @@ async function handleEditRequest(req, res) {
       });
     }
     
+    // Enforce package edit limits server-side (Toast 3 / Main 5 / Keynote 7)
+    const EDIT_LIMITS = {
+      toast: 3, basic: 3, tier1: 3,
+      main: 5, speech: 5, standard: 5, tier2: 5,
+      keynote: 7, premium: 7, tier3: 7
+    };
+    
+    const speech = await firebaseService.getSpeechById(speechId);
+    if (!speech) {
+      return res.status(404).json({ success: false, error: 'Speech not found' });
+    }
+    
+    // Resolve the package tier: request value first, then the original order
+    let pkg = packageTier;
+    if (!pkg && speech.questionnaireId) {
+      try {
+        const questionnaire = await firebaseService.getQuestionnaireById(speech.questionnaireId);
+        pkg = questionnaire && (questionnaire.package || (questionnaire.order && questionnaire.order.package));
+      } catch (e) {
+        console.warn('Could not look up questionnaire for edit limit:', e.message);
+      }
+    }
+    const maxEdits = EDIT_LIMITS[pkg] || 3;
+    
+    // Count edits in this speech's chain (each edit is its own document),
+    // also honour any legacy in-place editCount on the record
+    const rootId = speech.rootSpeechId || speechId;
+    const chainEdits = await firebaseService.countEditsForChain(rootId);
+    const usedEdits = Math.max(chainEdits, speech.editCount || 0);
+    
+    if (usedEdits >= maxEdits) {
+      return res.status(403).json({
+        success: false,
+        error: 'Edit limit reached',
+        message: `This package includes ${maxEdits} edits and all have been used.`,
+        editCount: usedEdits,
+        maxEdits
+      });
+    }
+    
+    const newEditCount = usedEdits + 1;
+    
     // Generate edited speech using AI
     const editedSpeech = await aiService.editSpeech(originalSpeech, editRequest);
     
     // Save the edited speech as a NEW dashboard entry (original stays untouched)
     const saved = await firebaseService.saveEditedSpeech(speechId, {
       speechContent: editedSpeech,
-      editCount: editCount,
+      editCount: newEditCount,
       editRequest: editRequest
     });
     
     // Send email with updated speech
-    await emailService.sendUpdatedSpeech(userEmail, editedSpeech, editCount);
+    await emailService.sendUpdatedSpeech(userEmail, editedSpeech, newEditCount);
     
     console.log('Speech edited and sent successfully');
     
     return res.json({
       success: true,
       message: 'Speech edited successfully',
-      editCount: editCount,
+      editCount: newEditCount,
       editedSpeech: editedSpeech,
       newSpeechId: saved.speechId
     });

@@ -217,6 +217,7 @@ async function saveEditedSpeech(originalSpeechId, editData) {
       speechContent: editData.speechContent,
       isEdit: true,
       editOf: originalSpeechId,
+      rootSpeechId: orig.rootSpeechId || originalSpeechId,
       editCount: editData.editCount,
       editRequest: editData.editRequest || null,
       status: 'completed',
@@ -233,6 +234,65 @@ async function saveEditedSpeech(originalSpeechId, editData) {
     };
   } catch (error) {
     console.error('Error saving edited speech:', error);
+    throw error;
+  }
+}
+
+async function getSpeechById(speechId) {
+  try {
+    const doc = await db.collection('speeches').doc(speechId).get();
+    if (!doc.exists) return null;
+    return { id: doc.id, ...doc.data() };
+  } catch (error) {
+    console.error('Error getting speech:', error);
+    throw error;
+  }
+}
+
+// Counts every edit entry belonging to a speech chain (each edit is its own doc)
+async function countEditsForChain(rootSpeechId) {
+  try {
+    const snapshot = await db.collection('speeches')
+      .where('rootSpeechId', '==', rootSpeechId)
+      .get();
+    return snapshot.size;
+  } catch (error) {
+    console.error('Error counting edits:', error);
+    throw error;
+  }
+}
+
+// Marks 'in_progress' speeches as completed once their estimated window has
+// passed - covers cases where the server restarted before the timer fired
+async function markStaleSpeechesCompleted() {
+  try {
+    const snapshot = await db.collection('speeches')
+      .where('status', '==', 'in_progress')
+      .get();
+
+    if (snapshot.empty) return 0;
+
+    const now = Date.now();
+    let marked = 0;
+
+    const updates = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const due = data.estimatedCompletionAt ? new Date(data.estimatedCompletionAt).getTime() : null;
+      if (!due || due <= now) {
+        updates.push(doc.ref.update({
+          status: 'completed',
+          completedAt: data.estimatedCompletionAt || new Date().toISOString()
+        }));
+        marked++;
+      }
+    });
+
+    await Promise.all(updates);
+    if (marked > 0) console.log(`✓ Marked ${marked} stale speech(es) as completed`);
+    return marked;
+  } catch (error) {
+    console.error('Error marking stale speeches completed:', error);
     throw error;
   }
 }
@@ -282,5 +342,8 @@ module.exports = {
   saveDashboardData,
   updateSpeechWithEdit,
   saveEditedSpeech,
+  getSpeechById,
+  countEditsForChain,
+  markStaleSpeechesCompleted,
   saveContactInteraction
 };
