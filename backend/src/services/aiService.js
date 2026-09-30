@@ -1,5 +1,47 @@
 const axios = require('axios');
 
+// Shared Anthropic Claude call used by all AI features (speech gen, edits, support replies)
+async function callClaude(prompt, { maxTokens = 2000, temperature = 0.7, system } = {}) {
+  const body = {
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: maxTokens,
+    temperature,
+    messages: [{ role: 'user', content: prompt }]
+  };
+  if (system) body.system = system;
+
+  const response = await axios.post(
+    'https://api.anthropic.com/v1/messages',
+    body,
+    {
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY || process.env.OPENHANDS_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      timeout: 60000
+    }
+  );
+
+  const text = response.data.content?.[0]?.text;
+  if (!text) throw new Error('Claude returned empty response');
+  return text;
+}
+
+const SUPPORT_CONTEXT = `You are the customer support assistant for SuperSpeech (superspeech.biz), an AI-powered custom speechwriting service.
+
+BUSINESS FACTS (use these to answer accurately):
+- Customers order via the questionnaire at superspeech.biz, choosing an occasion (weddings, corporate events, milestone celebrations, memorials & tributes), a tone (Serious, Humorous, Emotional or Pure Banter) and a package.
+- Packages: The Toast (£9.99, ~2 minute speech, 3 edits included), The Main Event (£19.99, ~5 minute speech, 5 edits included), The Keynote (£34.99, ~10 minute speech, 7 edits included).
+- Finished speeches are emailed to the customer and also appear in their dashboard (a free account is required to order).
+- Edits are requested from the dashboard's speech viewer via "Request Edit".
+- For anything you cannot resolve, suggest they reply to this email or write to hello@superspeech.biz.
+
+HARD RULES:
+- NEVER promise, offer, agree to or imply a refund — even if the customer asks for one. If a refund or serious complaint comes up, say their message has been passed to the team for review and they will hear back shortly. If they are unhappy with a speech, suggest requesting a free edit from their dashboard.
+- Do not invent policies, guarantees, delivery times or discounts.
+- Answer their actual question directly and helpfully — do not just acknowledge receipt.`;
+
 async function generateSpeech(questionnaireData) {
   const {
     occasionType,
@@ -133,7 +175,7 @@ Write a completely original, ${tone} speech now:`;
 }
 
 async function generateEmailReply(emailContent, senderEmail, subject) {
-  const prompt = `You are a helpful customer service agent for SuperSpeech, a service that creates custom speeches for special occasions.
+  const prompt = `${SUPPORT_CONTEXT}
 
 A customer has sent us this email:
 Subject: ${subject}
@@ -142,39 +184,12 @@ From: ${senderEmail}
 Email Content:
 ${emailContent}
 
-Please write a helpful, professional, and friendly response that:
-1. Acknowledges their inquiry or concern
-2. Provides useful and actionable information
-3. Is polite and empathetic
-4. Does NOT agree to full refunds without proper review
-5. Offers to help further if needed
-6. Keeps the tone warm but profe
+Write a helpful, warm and professional reply that directly answers their question or addresses their concern with the facts above. Sign off as "The SuperSpeech Team".
 
-Wrissionalte the email reply now (do not include subject line, just the email body):`;
+Write the email reply now (do not include a subject line, just the email body):`;
 
   try {
-    const response = await axios.post(
-      `${process.env.OPENHANDS_API_URL}/conversations`,
-      {
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        model: 'gpt-4',
-        temperature: 0.7,
-        max_tokens: 500
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.OPENHANDS_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    const replyContent = response.data.choices?.[0]?.message?.content || response.data.response;
+    const replyContent = await callClaude(prompt, { maxTokens: 800, temperature: 0.7 });
     
     return {
       success: true,
@@ -242,92 +257,33 @@ Please revise the speech according to the customer's requests. Keep the same ove
 Return only the revised speech text, no explanations or meta-commentary.`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENHANDS_API_KEY || process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: 2000,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`AI API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const editedSpeech = data.choices[0].message.content.trim();
-    
+    const editedSpeech = (await callClaude(prompt, { maxTokens: 4000, temperature: 0.7 })).trim();
     console.log('Speech edited successfully');
     return editedSpeech;
   } catch (error) {
-    console.error('Error editing speech with AI:', error);
-    return originalSpeech + '\n\n[Edit request received but could not be processed. Please contact hello@superspeech.biz for manual editing.]';
+    console.error('Error editing speech with AI:', error.response?.data || error.message);
+    throw error; // Let the controller return an error instead of emailing an unedited speech
   }
 }
 
 async function generateContactReply(subject, message) {
   console.log('Generating AI reply for contact form...');
   
-  const prompt = `You are a helpful customer service representative for SuperSpeech, a professional speechwriting service. 
+  const prompt = `${SUPPORT_CONTEXT}
 
-A customer has sent the following message:
+A customer has sent the following message via the website contact form:
 
 SUBJECT: ${subject || 'General Inquiry'}
 
 MESSAGE:
 ${message}
 
-Write a helpful, professional, and friendly reply. Address their concerns or questions directly. Do NOT:
-- Promise refunds unless they explicitly mention a refund
-- Make commitments about specific timelines without knowing our actual policies
-- Be overly apologetic or defensive
+Write a helpful, warm and conversational reply that directly answers their question or addresses their concern using the facts above. Sign off as "The SuperSpeech Team".
 
-DO:
-- Be warm and helpful
-- Provide useful information
-- Suggest they email hello@superspeech.biz for specific account or order issues
-- Keep the tone conversational but professional
-
-Write only the reply email body, no subject line or signature.`;
+Write only the reply email body, no subject line.`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.OPENHANDS_API_KEY || process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        max_tokens: 500,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`AI API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const reply = data.choices[0].message.content.trim();
-    
+    const reply = (await callClaude(prompt, { maxTokens: 800, temperature: 0.7 })).trim();
     console.log('Contact reply generated successfully');
     return reply;
   } catch (error) {

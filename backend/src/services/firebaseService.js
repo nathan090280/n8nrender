@@ -193,6 +193,50 @@ async function updateSpeechWithEdit(speechId, editData) {
   }
 }
 
+// Saves an AI-edited speech as a NEW entry in Completed Speeches (original stays untouched)
+async function saveEditedSpeech(originalSpeechId, editData) {
+  try {
+    const origRef = db.collection('speeches').doc(originalSpeechId);
+    const origDoc = await origRef.get();
+
+    if (!origDoc.exists) {
+      throw new Error('Speech not found');
+    }
+
+    const orig = origDoc.data();
+    const now = new Date().toISOString();
+    const speechRef = db.collection('speeches').doc();
+
+    await speechRef.set({
+      userId: orig.userId || null,
+      userEmail: orig.userEmail || orig.recipientEmail || null,
+      recipientEmail: orig.recipientEmail || orig.userEmail || null,
+      recipientName: orig.recipientName || null,
+      questionnaireId: orig.questionnaireId || null,
+      occasionType: orig.occasionType || orig.occasion || 'Speech',
+      speechContent: editData.speechContent,
+      isEdit: true,
+      editOf: originalSpeechId,
+      editCount: editData.editCount,
+      editRequest: editData.editRequest || null,
+      status: 'completed',
+      createdAt: now,
+      completedAt: now
+    });
+
+    console.log(`✓ Edit #${editData.editCount} saved as new speech ${speechRef.id} (from ${originalSpeechId})`);
+
+    return {
+      success: true,
+      speechId: speechRef.id,
+      editCount: editData.editCount
+    };
+  } catch (error) {
+    console.error('Error saving edited speech:', error);
+    throw error;
+  }
+}
+
 async function saveContactInteraction(interactionData) {
   try {
     const contactRef = db.collection('contactInteractions').doc();
@@ -237,5 +281,6 @@ module.exports = {
   getQuestionnaireById,
   saveDashboardData,
   updateSpeechWithEdit,
+  saveEditedSpeech,
   saveContactInteraction
 };

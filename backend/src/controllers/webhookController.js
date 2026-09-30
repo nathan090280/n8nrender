@@ -212,15 +212,11 @@ async function handleEditRequest(req, res) {
     // Generate edited speech using AI
     const editedSpeech = await aiService.editSpeech(originalSpeech, editRequest);
     
-    // Update speech in Firebase with edited version
-    await firebaseService.updateSpeechWithEdit(speechId, {
+    // Save the edited speech as a NEW dashboard entry (original stays untouched)
+    const saved = await firebaseService.saveEditedSpeech(speechId, {
       speechContent: editedSpeech,
       editCount: editCount,
-      editHistory: {
-        previousVersion: originalSpeech,
-        editRequest: editRequest,
-        editedAt: new Date().toISOString()
-      }
+      editRequest: editRequest
     });
     
     // Send email with updated speech
@@ -232,7 +228,8 @@ async function handleEditRequest(req, res) {
       success: true,
       message: 'Speech edited successfully',
       editCount: editCount,
-      editedSpeech: editedSpeech
+      editedSpeech: editedSpeech,
+      newSpeechId: saved.speechId
     });
   } catch (error) {
     console.error('Edit request error:', error);
