@@ -161,6 +161,73 @@ async function saveDashboardData(userId, dashboardData) {
   }
 }
 
+async function updateSpeechWithEdit(speechId, editData) {
+  try {
+    const speechRef = db.collection('speeches').doc(speechId);
+    const speechDoc = await speechRef.get();
+    
+    if (!speechDoc.exists) {
+      throw new Error('Speech not found');
+    }
+    
+    const currentData = speechDoc.data();
+    const currentHistory = currentData.editHistory || [];
+    
+    await speechRef.update({
+      speechContent: editData.speechContent,
+      editCount: editData.editCount,
+      editHistory: [...currentHistory, editData.editHistory],
+      updatedAt: new Date().toISOString()
+    });
+    
+    console.log(`✓ Speech ${speechId} updated with edit #${editData.editCount}`);
+    
+    return {
+      success: true,
+      speechId,
+      editCount: editData.editCount
+    };
+  } catch (error) {
+    console.error('Error updating speech with edit:', error);
+    throw error;
+  }
+}
+
+async function saveContactInteraction(interactionData) {
+  try {
+    const contactRef = db.collection('contactInteractions').doc();
+    const data = {
+      ...interactionData,
+      createdAt: new Date().toISOString()
+    };
+    
+    await contactRef.set(data);
+    
+    // Also save to user's messages if userId provided
+    if (interactionData.userId) {
+      await db.collection('users').doc(interactionData.userId)
+        .collection('messages').add({
+          from: 'SuperSpeech Support',
+          subject: interactionData.subject,
+          message: interactionData.aiReply,
+          originalMessage: interactionData.message,
+          createdAt: data.createdAt
+        });
+    }
+    
+    console.log(`✓ Contact interaction saved`);
+    
+    return {
+      success: true,
+      interactionId: contactRef.id,
+      data
+    };
+  } catch (error) {
+    console.error('Error saving contact interaction:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   saveQuestionnaire,
   saveSpeech,
@@ -168,5 +235,7 @@ module.exports = {
   getUserSpeeches,
   updateQuestionnaireStatus,
   getQuestionnaireById,
-  saveDashboardData
+  saveDashboardData,
+  updateSpeechWithEdit,
+  saveContactInteraction
 };
