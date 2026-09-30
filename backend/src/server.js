@@ -115,18 +115,38 @@ app.get('/api/dashboard/:email', async (req, res) => {
           createdAt: data.createdAt
         });
       });
-      
-      messages.sort((a, b) => {
-        const aTime = a.createdAt ? new Date(a.createdAt) : new Date(0);
-        const bTime = b.createdAt ? new Date(b.createdAt) : new Date(0);
-        return bTime - aTime;
-      });
-      
-      // Limit to 10
-      messages.splice(10);
     } catch (err) {
       console.warn('Could not fetch messages:', err.message);
     }
+    
+    // Also fetch AI mailer contact replies (stored in contactInteractions)
+    try {
+      const contactSnapshot = await db.collection('contactInteractions')
+        .where('email', '==', userEmail)
+        .get();
+      
+      contactSnapshot.forEach(doc => {
+        const data = doc.data();
+        messages.push({
+          id: doc.id,
+          from: 'SuperSpeech Support',
+          body: data.aiReply || data.message,
+          subject: data.subject,
+          createdAt: data.createdAt
+        });
+      });
+    } catch (err) {
+      console.warn('Could not fetch contact interactions:', err.message);
+    }
+    
+    messages.sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt) : new Date(0);
+      const bTime = b.createdAt ? new Date(b.createdAt) : new Date(0);
+      return bTime - aTime;
+    });
+    
+    // Limit to 10
+    messages.splice(10);
     
     res.json({
       success: true,
