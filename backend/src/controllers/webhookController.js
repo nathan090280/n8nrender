@@ -231,7 +231,8 @@ async function handleEditRequest(req, res) {
     return res.json({
       success: true,
       message: 'Speech edited successfully',
-      editCount: editCount
+      editCount: editCount,
+      editedSpeech: editedSpeech
     });
   } catch (error) {
     console.error('Edit request error:', error);
