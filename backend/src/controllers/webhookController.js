@@ -6,7 +6,8 @@ async function handleQuestionnaireCompletion(req, res) {
   try {
     const questionnaireData = req.body;
     
-    console.log('Received questionnaire completion:', JSON.stringify(questionnaireData, null, 2));
+    const logEmail = questionnaireData.customer ? questionnaireData.customer.email : questionnaireData.email;
+    console.log('Received questionnaire completion:', { email: logEmail, occasion: questionnaireData.occasionType, tone: questionnaireData.tone });
     
     // Handle both formats: direct {email, name} and nested {customer: {email, name}}
     let email, name, userId;
@@ -139,7 +140,7 @@ async function handleIncomingEmail(req, res) {
   try {
     const emailData = req.body;
     
-    console.log('Received incoming email:', emailData);
+    console.log('Received incoming email:', { from: emailData.from, subject: emailData.subject });
     
     const { from, subject, text, html } = emailData;
     
