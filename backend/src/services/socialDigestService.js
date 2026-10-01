@@ -170,6 +170,8 @@ async function threadsMetrics() {
     params: { fields: 'id,timestamp', limit: 25, access_token: token }, timeout: 15000 });
   const todayPosts = (media.data.data || []).filter(m => isTodayLondon(m.timestamp));
   out.postsToday = todayPosts.length;
+  const daysLeft = await require('./socialPostService').threadsTokenDaysLeft();
+  if (daysLeft !== null) out.tokenDaysLeft = daysLeft;
   return out;
 }
 

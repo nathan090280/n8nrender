@@ -140,37 +140,35 @@ async function postToThreads(text, imageUrl) {
   return { platform: 'threads', id: pub.data.id };
 }
 
-// Called daily by the scheduler. Threads tokens renew indefinitely via
-// th_refresh_token as long as they're still valid - we refresh early (<14d).
-async function refreshThreadsTokenIfNeeded() {
+// Threads user tokens last 60 days. th_refresh_token isn't supported for
+// Explorer-generated tokens, so instead we track expiry and surface the
+// days-left count in the nightly digest - Nathan re-generates via Graph
+// Explorer when it gets low.
+async function trackThreadsToken() {
   try {
     const doc = await db.collection('config').doc('threadsToken').get();
     const data = doc.exists ? doc.data() : null;
     const current = data?.token || process.env.THREADS_ACCESS_TOKEN;
-    const daysLeft = data?.expiresAt
-      ? (new Date(data.expiresAt) - Date.now()) / 86400000
-      : 0; // no record yet -> force a refresh to seed Firestore
     if (!current) return;
-    if (data && daysLeft > 14) return; // plenty of runway
-
-    const res = await axios.get('https://graph.threads.net/access_token', {
-      params: {
-        grant_type: 'th_refresh_token',
-        access_token: current
-      },
-      timeout: 15000
-    });
-    if (!res.data.access_token) return;
-
-    await db.collection('config').doc('threadsToken').set({
-      token: res.data.access_token,
-      expiresAt: new Date(Date.now() + (res.data.expires_in || 5184000) * 1000).toISOString(),
-      refreshedAt: new Date().toISOString()
-    }, { merge: true });
-    console.log('[Social] Threads token refreshed');
+    if (!data?.expiresAt) {
+      // Seed: env token issued today, 60-day life
+      await db.collection('config').doc('threadsToken').set({
+        token: current,
+        expiresAt: new Date(Date.now() + 5184000 * 1000).toISOString(),
+        seededAt: new Date().toISOString()
+      }, { merge: true });
+    }
   } catch (e) {
-    console.warn('[Social] Threads token refresh failed:', e.response?.data?.error?.message || e.message);
+    console.warn('[Social] Threads token tracking failed:', e.message);
   }
+}
+
+async function threadsTokenDaysLeft() {
+  try {
+    const doc = await db.collection('config').doc('threadsToken').get();
+    if (!doc.exists || !doc.data().expiresAt) return null;
+    return Math.round((new Date(doc.data().expiresAt) - Date.now()) / 86400000);
+  } catch { return null; }
 }
 
 const POSTERS = {
@@ -197,4 +195,4 @@ async function publishPost({ captions, imageUrl, platforms }) {
   return results;
 }
 
-module.exports = { publishPost, POSTERS, refreshThreadsTokenIfNeeded, getThreadsToken };
+module.exports = { publishPost, POSTERS, trackThreadsToken, threadsTokenDaysLeft, getThreadsToken };
