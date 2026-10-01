@@ -66,6 +66,7 @@ async function runPostJob({ platforms, topic, category, dryRun, manual } = {}) {
       title: post.cardHeadline,
       link: 'https://superspeech.biz/tips'
     });
+    results[p] = r[p];
   }
 
   result.results = results;
