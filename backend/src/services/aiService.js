@@ -325,10 +325,17 @@ Write only the comment text, nothing else.`;
   }
 }
 
+// Generic pass-through used by the content engine - the caller supplies the
+// full prompt (e.g. the social content guide + a generation request).
+async function generateSocialCopy(prompt, opts = {}) {
+  return callClaude(prompt, { maxTokens: 1500, temperature: 0.9, ...opts });
+}
+
 module.exports = {
   generateSpeech,
   generateEmailReply,
   editSpeech,
   generateContactReply,
-  generateRedditReply
+  generateRedditReply,
+  generateSocialCopy
 };

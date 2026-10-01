@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const webhookController = require('../controllers/webhookController');
+const socialPostController = require('../controllers/socialPostController');
 
 router.post('/questionnaire-completed', webhookController.handleQuestionnaireCompletion);
 
@@ -13,6 +14,9 @@ router.post('/contact-form', webhookController.handleContactForm);
 router.post('/mailing-list', webhookController.handleMailingListSignup);
 
 router.post('/mailing-list-send', webhookController.handleMailingListSend);
+
+// AI social poster: generates a post from the content guide + publishes cards
+router.post('/social-post', socialPostController.handleSocialPost);
 
 router.get('/tips', webhookController.handleGetTips);
 

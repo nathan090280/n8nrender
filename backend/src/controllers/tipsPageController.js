@@ -231,24 +231,48 @@ async function renderTipPage(req, res) {
   }
 }
 
-// Serves a branded 1080x1080 PNG for a tip - used as og:image on tip pages
-// and as the media URL when posting the tip to social channels.
+// Serves a branded 1080x1080 card for a tip - og:image on tip pages plus
+// the media URL when posting to social channels. Route carries an extension
+// param (.png or .jpg) because Instagram requires a jpeg media URL.
 async function renderTipCard(req, res) {
   try {
     const slug = req.params.slug;
+    const ext = (req.params.ext || 'png').toLowerCase();
     const tips = await firebaseService.getPublishedTips();
     const tip = tips.find(t => slugify(t.title) === slug);
     if (!tip) return res.status(404).send('No such tip');
 
-    const png = await imageCardService.renderCard(imageCardService.tipCardSvg({
+    const format = (ext === 'jpg' || ext === 'jpeg') ? 'jpeg' : 'png';
+    const buf = await imageCardService.renderCard(imageCardService.tipCardSvg({
       title: tip.title,
       excerpt: excerpt(tip.body, 168)
-    }));
-    res.set('Content-Type', 'image/png');
+    }), format);
+    res.set('Content-Type', `image/${format === 'jpeg' ? 'jpeg' : 'png'}`);
     res.set('Cache-Control', 'public, max-age=86400'); // cards are deterministic; cache a day
-    res.send(png);
+    res.send(buf);
   } catch (error) {
     console.error('Tip card error:', error);
+    res.status(500).send('Card render failed');
+  }
+}
+
+// Generic brand card: /public/media/card.png?h=<headline>&s=<sub>
+// Used by the social content engine for non-tip posts (hooks, jokes, polls).
+async function renderBrandCard(req, res) {
+  try {
+    const ext = (req.params.ext || 'png').toLowerCase();
+    const h = String(req.query.h || '').slice(0, 60);
+    const s = String(req.query.s || '').slice(0, 140);
+    if (!h) return res.status(400).send('Missing h (headline) param');
+
+    const format = (ext === 'jpg' || ext === 'jpeg') ? 'jpeg' : 'png';
+    const buf = await imageCardService.renderCard(
+      imageCardService.brandCardSvg({ headline: h, sub: s }), format);
+    res.set('Content-Type', `image/${format === 'jpeg' ? 'jpeg' : 'png'}`);
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(buf);
+  } catch (error) {
+    console.error('Brand card error:', error);
     res.status(500).send('Card render failed');
   }
 }
@@ -270,4 +294,4 @@ async function renderSitemap(req, res) {
   }
 }
 
-module.exports = { renderTipsIndex, renderTipPage, renderSitemap, renderTipCard, slugify };
+module.exports = { renderTipsIndex, renderTipPage, renderSitemap, renderTipCard, renderBrandCard, slugify };

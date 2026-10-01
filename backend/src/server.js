@@ -83,7 +83,9 @@ app.get('/api/unsubscribe', webhookController.handleUnsubscribe);
 app.get('/public/tips', tipsPageController.renderTipsIndex);
 app.get('/public/tips/:slug', tipsPageController.renderTipPage);
 app.get('/public/sitemap.xml', tipsPageController.renderSitemap);
-app.get('/public/media/tip/:slug.png', tipsPageController.renderTipCard);
+// Card images carry an extension param so Instagram can request .jpg media.
+app.get('/public/media/tip/:slug.:ext', tipsPageController.renderTipCard);
+app.get('/public/media/card.:ext', tipsPageController.renderBrandCard);
 
 // Dashboard endpoint - requires the logged-in user's Netlify Identity JWT.
 // The token is verified against the site's own Netlify Identity service,

@@ -78,8 +78,11 @@ function brandCardSvg({ headline, sub }) {
 </svg>`;
 }
 
-async function renderCard(svg) {
-  return sharp(Buffer.from(svg)).png().toBuffer();
+// format: 'png' (default) or 'jpeg' - Instagram's media container API is
+// picky about formats, so social posting can request /media/*.jpg variants.
+async function renderCard(svg, format = 'png') {
+  const img = sharp(Buffer.from(svg));
+  return format === 'jpeg' ? img.jpeg({ quality: 90 }).toBuffer() : img.png().toBuffer();
 }
 
 module.exports = { tipCardSvg, brandCardSvg, renderCard };
