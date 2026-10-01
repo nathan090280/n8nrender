@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { db } = require('../config/firebase');
 
 // Posts to each connected channel. All creds come from env vars set on Render.
 // imageUrl must be a PUBLIC URL (the generated card endpoints) - Meta fetches
@@ -113,8 +114,19 @@ async function postToBluesky(text, imageUrl) {
   return { platform: 'bluesky', uri: res.data.uri };
 }
 
+// Threads user tokens last 60 days but refresh indefinitely. The live token
+// lives in Firestore (config/threadsToken) so the self-refresh job can rotate
+// it without a redeploy; env var is the bootstrap/fallback.
+async function getThreadsToken() {
+  try {
+    const doc = await db.collection('config').doc('threadsToken').get();
+    if (doc.exists && doc.data().token) return doc.data().token;
+  } catch { /* fall back to env */ }
+  return process.env.THREADS_ACCESS_TOKEN;
+}
+
 async function postToThreads(text, imageUrl) {
-  const token = process.env.THREADS_ACCESS_TOKEN;
+  const token = await getThreadsToken();
   const uid = process.env.THREADS_USER_ID;
   // Same two-step container model as Instagram
   const container = await axios.post(`https://graph.threads.net/v1.0/${uid}/threads`, null, {
@@ -126,6 +138,39 @@ async function postToThreads(text, imageUrl) {
     timeout: 30000
   });
   return { platform: 'threads', id: pub.data.id };
+}
+
+// Called daily by the scheduler. Threads tokens renew indefinitely via
+// th_refresh_token as long as they're still valid - we refresh early (<14d).
+async function refreshThreadsTokenIfNeeded() {
+  try {
+    const doc = await db.collection('config').doc('threadsToken').get();
+    const data = doc.exists ? doc.data() : null;
+    const current = data?.token || process.env.THREADS_ACCESS_TOKEN;
+    const daysLeft = data?.expiresAt
+      ? (new Date(data.expiresAt) - Date.now()) / 86400000
+      : 0; // no record yet -> force a refresh to seed Firestore
+    if (!current) return;
+    if (data && daysLeft > 14) return; // plenty of runway
+
+    const res = await axios.get('https://graph.threads.net/access_token', {
+      params: {
+        grant_type: 'th_refresh_token',
+        access_token: current
+      },
+      timeout: 15000
+    });
+    if (!res.data.access_token) return;
+
+    await db.collection('config').doc('threadsToken').set({
+      token: res.data.access_token,
+      expiresAt: new Date(Date.now() + (res.data.expires_in || 5184000) * 1000).toISOString(),
+      refreshedAt: new Date().toISOString()
+    }, { merge: true });
+    console.log('[Social] Threads token refreshed');
+  } catch (e) {
+    console.warn('[Social] Threads token refresh failed:', e.response?.data?.error?.message || e.message);
+  }
 }
 
 const POSTERS = {
@@ -152,4 +197,4 @@ async function publishPost({ captions, imageUrl, platforms }) {
   return results;
 }
 
-module.exports = { publishPost, POSTERS };
+module.exports = { publishPost, POSTERS, refreshThreadsTokenIfNeeded, getThreadsToken };

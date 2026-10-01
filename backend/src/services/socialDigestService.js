@@ -159,7 +159,7 @@ async function collSize(collection) {
 }
 
 async function threadsMetrics() {
-  const token = process.env.THREADS_ACCESS_TOKEN;
+  const token = await require('./socialPostService').getThreadsToken();
   const uid = process.env.THREADS_USER_ID;
   const out = {};
   const prof = await axios.get(`https://graph.threads.net/v1.0/${uid}`, {

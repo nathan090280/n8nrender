@@ -96,6 +96,12 @@ async function alreadySentDigestToday(londonDate) {
 async function tick() {
   const now = londonNow();
 
+  // Threads token self-refresh - checked hourly, renews under 14 days left.
+  // (Runs on the digest tick only to keep it once-a-day.)
+  if (now.hour === DIGEST_HOUR && now.minute === DIGEST_MINUTE) {
+    socialPostService.refreshThreadsTokenIfNeeded().catch(() => {});
+  }
+
   // Nightly digest email at 21:30 UK
   if (now.hour === DIGEST_HOUR && now.minute >= DIGEST_MINUTE && !(await alreadySentDigestToday(now.date))) {
     try {
