@@ -1,5 +1,6 @@
 const firebaseService = require('../services/firebaseService');
 const imageCardService = require('../services/imageCardService');
+const statsService = require('../services/statsService');
 
 const SITE_URL = 'https://superspeech.biz';
 
@@ -134,6 +135,7 @@ function pageShell({ title, description, canonical, content, jsonLd, ogImage }) 
 
 async function renderTipsIndex(req, res) {
   try {
+    statsService.track('tipsIndexViews');
     const tips = await firebaseService.getPublishedTips();
     const cards = tips.map(t => `
       <a class="tip-card" href="/tips/${slugify(t.title)}">
@@ -180,6 +182,7 @@ async function renderTipPage(req, res) {
     const tip = tips.find(t => slugify(t.title) === slug);
 
     if (!tip) {
+      statsService.track('tipNotFound');
       setPublicHeaders(res, 'text/html');
       res.status(404).send(pageShell({
         title: 'Tip not found | SuperSpeech',
@@ -190,6 +193,7 @@ async function renderTipPage(req, res) {
       return;
     }
 
+    statsService.track('tipPageViews');
     const canonical = `${SITE_URL}/tips/${slug}`;
     const desc = excerpt(tip.body);
     const ogImage = `${SITE_URL}/media/tip/${slug}.png`;
@@ -241,6 +245,7 @@ async function renderTipCard(req, res) {
     const tips = await firebaseService.getPublishedTips();
     const tip = tips.find(t => slugify(t.title) === slug);
     if (!tip) return res.status(404).send('No such tip');
+    statsService.track('cardFetches');
 
     const format = (ext === 'jpg' || ext === 'jpeg') ? 'jpeg' : 'png';
     const buf = await imageCardService.renderCard(imageCardService.tipCardSvg({
@@ -264,6 +269,7 @@ async function renderBrandCard(req, res) {
     const h = String(req.query.h || '').slice(0, 60);
     const s = String(req.query.s || '').slice(0, 140);
     if (!h) return res.status(400).send('Missing h (headline) param');
+    statsService.track('cardFetches');
 
     const format = (ext === 'jpg' || ext === 'jpeg') ? 'jpeg' : 'png';
     const buf = await imageCardService.renderCard(

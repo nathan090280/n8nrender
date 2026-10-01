@@ -2,6 +2,7 @@ const axios = require('axios');
 const emailService = require('./emailService');
 const { db } = require('../config/firebase');
 const { londonNow } = require('../utils/londonTime');
+const statsService = require('./statsService');
 
 // Nightly digest to hello@superspeech.biz: followers, today's interactions,
 // and what we posted. Every platform call is defensive - a missing scope or
@@ -120,6 +121,35 @@ async function blueskyMetrics() {
   return out;
 }
 
+// Count docs in a collection whose createdAt falls on today (London).
+async function countToday(collection, field = 'createdAt') {
+  try {
+    const snap = await db.collection(collection).limit(500).get();
+    return snap.docs.filter(d => isTodayLondon(d.data()[field])).length;
+  } catch { return null; }
+}
+
+async function siteAndBusiness() {
+  const [views, orders, speeches, signups, contacts, tipsCount] = await Promise.all([
+    statsService.getToday(),
+    countToday('questionnaires'),
+    countToday('speeches'),
+    countToday('mailingList'),
+    countToday('contactInteractions'),
+    db.collection('tips').where('published', '==', true).get().then(s => s.size).catch(() => null)
+  ]);
+  return {
+    tipPageViews: views.tipPageViews || 0,
+    tipsIndexViews: views.tipsIndexViews || 0,
+    cardFetches: views.cardFetches || 0,
+    newOrders: orders,
+    speechesGenerated: speeches,
+    newMailingListSignups: signups,
+    contactMessages: contacts,
+    publishedTips: tipsCount
+  };
+}
+
 function row(label, m, extra = '') {
   if (!m) return `<tr><td style="padding:8px 12px;border:1px solid #e2e8f0;"><b>${label}</b></td><td style="padding:8px 12px;border:1px solid #e2e8f0;" colspan="3">unavailable</td></tr>`;
   const cells = Object.entries(m).map(([k, v]) =>
@@ -132,11 +162,12 @@ async function collectAndSend() {
   const fbIds = posts.map(p => p.results?.facebook?.id).filter(Boolean);
   const igIds = posts.map(p => p.results?.instagram?.id).filter(Boolean);
 
-  const [fb, ig, masto, bsky] = await Promise.all([
+  const [fb, ig, masto, bsky, site] = await Promise.all([
     facebookMetrics(fbIds).catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     instagramMetrics(igIds).catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     mastodonMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message })),
-    blueskyMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message }))
+    blueskyMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message })),
+    siteAndBusiness().catch(e => ({ error: e.message }))
   ]);
 
   const postedHtml = posts.length
@@ -154,12 +185,13 @@ ${row('Facebook', fb)}
 ${row('Instagram', ig)}
 ${row('Mastodon', masto)}
 ${row('Bluesky', bsky)}
+${row('Site & Business', site)}
 </table>
 <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Sent automatically by the SuperSpeech social engine. Gaps mean the platform API didn't expose the metric (often missing scopes) - not necessarily zero.</p>
 </body></html>`;
 
   await emailService.sendSocialDigest(DIGEST_TO, html);
-  return { fb, ig, masto, bsky, posts: posts.length };
+  return { fb, ig, masto, bsky, site, posts: posts.length };
 }
 
 module.exports = { collectAndSend };
