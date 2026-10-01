@@ -37,6 +37,7 @@ async function runPostJob({ platforms, topic, category, dryRun, manual } = {}) {
   const captions = post.captionsByPlatform || {
     facebook: post.captions?.facebook,
     instagram: post.captions?.instagram,
+    threads: post.captions?.short,
     mastodon: post.captions?.short,
     bluesky: post.captions?.short
   };

@@ -113,9 +113,25 @@ async function postToBluesky(text, imageUrl) {
   return { platform: 'bluesky', uri: res.data.uri };
 }
 
+async function postToThreads(text, imageUrl) {
+  const token = process.env.THREADS_ACCESS_TOKEN;
+  const uid = process.env.THREADS_USER_ID;
+  // Same two-step container model as Instagram
+  const container = await axios.post(`https://graph.threads.net/v1.0/${uid}/threads`, null, {
+    params: { media_type: 'IMAGE', image_url: imageUrl, text, access_token: token },
+    timeout: 30000
+  });
+  const pub = await axios.post(`https://graph.threads.net/v1.0/${uid}/threads_publish`, null, {
+    params: { creation_id: container.data.id, access_token: token },
+    timeout: 30000
+  });
+  return { platform: 'threads', id: pub.data.id };
+}
+
 const POSTERS = {
   facebook: postToFacebook,
   instagram: postToInstagram,
+  threads: postToThreads,
   mastodon: postToMastodon,
   bluesky: postToBluesky
 };

@@ -158,6 +158,21 @@ async function collSize(collection) {
   try { return (await db.collection(collection).get()).size; } catch { return null; }
 }
 
+async function threadsMetrics() {
+  const token = process.env.THREADS_ACCESS_TOKEN;
+  const uid = process.env.THREADS_USER_ID;
+  const out = {};
+  const prof = await axios.get(`https://graph.threads.net/v1.0/${uid}`, {
+    params: { fields: 'id,username,threads_profile_picture_url', access_token: token }, timeout: 15000 });
+  out.account = prof.data.username;
+  // followers_count needs threads_manage_insights scope; report what we can
+  const media = await axios.get(`https://graph.threads.net/v1.0/${uid}/threads`, {
+    params: { fields: 'id,timestamp', limit: 25, access_token: token }, timeout: 15000 });
+  const todayPosts = (media.data.data || []).filter(m => isTodayLondon(m.timestamp));
+  out.postsToday = todayPosts.length;
+  return out;
+}
+
 function row(label, m, extra = '') {
   if (!m) return `<tr><td style="padding:8px 12px;border:1px solid #e2e8f0;"><b>${label}</b></td><td style="padding:8px 12px;border:1px solid #e2e8f0;" colspan="3">unavailable</td></tr>`;
   const cells = Object.entries(m).map(([k, v]) =>
@@ -170,9 +185,10 @@ async function collectAndSend() {
   const fbIds = posts.map(p => p.results?.facebook?.id).filter(Boolean);
   const igIds = posts.map(p => p.results?.instagram?.id).filter(Boolean);
 
-  const [fb, ig, masto, bsky, site] = await Promise.all([
+  const [fb, ig, threads, masto, bsky, site] = await Promise.all([
     facebookMetrics(fbIds).catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     instagramMetrics(igIds).catch(e => ({ error: e.response?.data?.error?.message || e.message })),
+    threadsMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     mastodonMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     blueskyMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     siteAndBusiness().catch(e => ({ error: e.message }))
@@ -191,6 +207,7 @@ async function collectAndSend() {
 <tr style="background:#f1f5f9;"><th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left;">Channel</th><th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left;" colspan="3">Today's numbers</th></tr>
 ${row('Facebook', fb)}
 ${row('Instagram', ig)}
+${row('Threads', threads)}
 ${row('Mastodon', masto)}
 ${row('Bluesky', bsky)}
 ${row('Site & Business', site)}
@@ -199,7 +216,7 @@ ${row('Site & Business', site)}
 </body></html>`;
 
   await emailService.sendSocialDigest(DIGEST_TO, html);
-  return { fb, ig, masto, bsky, site, posts: posts.length };
+  return { fb, ig, threads, masto, bsky, site, posts: posts.length };
 }
 
 module.exports = { collectAndSend };
