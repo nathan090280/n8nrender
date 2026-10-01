@@ -41,11 +41,30 @@ async function sendSpeechEmail(recipientEmail, recipientName, speechContent, occ
 }
 
 async function sendAutoReply(recipientEmail, replyContent, subject) {
+  // replyContent arrives as plain text with newlines - wrap in the same
+  // paragraph styling as contact-form replies or it renders as one brick.
+  const replyHtml = String(replyContent)
+    .split(/\n{2,}/)
+    .map(para => `<p>${para.replace(/\n/g, '<br/>')}</p>`)
+    .join('');
+
   const mailOptions = {
     from: `SuperSpeech <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
     to: recipientEmail,
     subject: subject || 'Re: Your SuperSpeech Inquiry',
-    html: `<html><body>${replyContent}</body></html>`,
+    html: `
+      <html>
+        <body style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+          <div style="margin: 20px 0; line-height: 1.6;">
+            ${replyHtml}
+          </div>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+          <p style="color: #999; font-size: 12px; margin-top: 30px;">
+            This is an automated response from the SuperSpeech team. Just reply to this email if you need anything else.
+          </p>
+        </body>
+      </html>
+    `,
     text: replyContent
   };
 
