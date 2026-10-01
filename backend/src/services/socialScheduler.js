@@ -39,7 +39,8 @@ async function runPostJob({ platforms, topic, category, dryRun, manual } = {}) {
     instagram: post.captions?.instagram,
     threads: post.captions?.short,
     mastodon: post.captions?.short,
-    bluesky: post.captions?.short
+    bluesky: post.captions?.short,
+    pinterest: post.captions?.short
   };
 
   const result = {
@@ -61,9 +62,10 @@ async function runPostJob({ platforms, topic, category, dryRun, manual } = {}) {
     const r = await socialPostService.publishPost({
       captions: { [p]: captions[p] },
       imageUrl,
-      platforms: [p]
+      platforms: [p],
+      title: post.cardHeadline,
+      link: 'https://superspeech.biz/tips'
     });
-    results[p] = r[p];
   }
 
   result.results = results;
@@ -96,9 +98,10 @@ async function alreadySentDigestToday(londonDate) {
 async function tick() {
   const now = londonNow();
 
-  // Seed Threads token expiry tracking once a day
+  // Seed Threads token tracking + refresh Pinterest token once a day
   if (now.hour === DIGEST_HOUR && now.minute === DIGEST_MINUTE) {
     socialPostService.trackThreadsToken().catch(() => {});
+    socialPostService.refreshPinterestTokenIfNeeded().catch(() => {});
   }
 
   // Nightly digest email at 21:30 UK

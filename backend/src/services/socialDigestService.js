@@ -176,8 +176,9 @@ async function threadsMetrics() {
 }
 
 async function pinterestMetrics() {
+  const token = await require('./socialPostService').getPinterestToken();
   const res = await axios.get('https://api.pinterest.com/v5/user_account', {
-    headers: { Authorization: `Bearer ${process.env.PINTEREST_ACCESS_TOKEN}` }, timeout: 15000 });
+    headers: { Authorization: `Bearer ${token}` }, timeout: 15000 });
   const d = res.data;
   return {
     followers: d.follower_count,

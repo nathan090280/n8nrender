@@ -163,6 +163,77 @@ async function trackThreadsToken() {
   }
 }
 
+// Pinterest: access token ~30d, refresh token long-lived and refreshable.
+// Stored in Firestore config/pinterestToken so rotation needs no redeploy.
+async function getPinterestToken() {
+  try {
+    const doc = await db.collection('config').doc('pinterestToken').get();
+    if (doc.exists && doc.data().access_token) return doc.data().access_token;
+  } catch { /* fall back to env */ }
+  return process.env.PINTEREST_ACCESS_TOKEN;
+}
+
+async function refreshPinterestTokenIfNeeded() {
+  try {
+    const doc = await db.collection('config').doc('pinterestToken').get();
+    const data = doc.exists ? doc.data() : null;
+    const daysLeft = data?.expiresAt
+      ? (new Date(data.expiresAt) - Date.now()) / 86400000 : 0;
+    if (data && daysLeft > 14) return;
+    const refreshTok = data?.refresh_token || process.env.PINTEREST_REFRESH_TOKEN;
+    if (!refreshTok) return;
+
+    const cred = Buffer.from(
+      `${process.env.PINTEREST_APP_ID}:${process.env.PINTEREST_APP_SECRET}`).toString('base64');
+    const res = await axios.post('https://api.pinterest.com/v5/oauth/token',
+      `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshTok)}`,
+      { headers: { Authorization: `Basic ${cred}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 });
+    if (!res.data.access_token) return;
+
+    await db.collection('config').doc('pinterestToken').set({
+      access_token: res.data.access_token,
+      refresh_token: res.data.refresh_token || refreshTok, // rotate if issued
+      expiresAt: new Date(Date.now() + (res.data.expires_in || 2592000) * 1000).toISOString(),
+      refreshedAt: new Date().toISOString()
+    }, { merge: true });
+    console.log('[Social] Pinterest token refreshed');
+  } catch (e) {
+    console.warn('[Social] Pinterest token refresh failed:', e.response?.data?.message || e.message);
+  }
+}
+
+// Pins need a board; lazily create/find "Speech Tips" and cache its id.
+async function pinterestBoardId() {
+  const doc = await db.collection('config').doc('pinterestToken').get();
+  if (doc.exists && doc.data().boardId) return doc.data().boardId;
+
+  const token = await getPinterestToken();
+  const headers = { Authorization: `Bearer ${token}` };
+  const boards = await axios.get('https://api.pinterest.com/v5/boards', { headers, timeout: 15000 });
+  let board = (boards.data.items || []).find(b => /speech/i.test(b.name));
+  if (!board) {
+    const created = await axios.post('https://api.pinterest.com/v5/boards',
+      { name: 'Speech Tips', description: 'Speech-writing tips, tricks and what-not-to-dos from SuperSpeech.' },
+      { headers: { ...headers, 'Content-Type': 'application/json' }, timeout: 15000 });
+    board = created.data;
+  }
+  await db.collection('config').doc('pinterestToken').set({ boardId: board.id }, { merge: true });
+  return board.id;
+}
+
+async function postToPinterest(text, imageUrl, title, link) {
+  const token = await getPinterestToken();
+  const boardId = await pinterestBoardId();
+  const res = await axios.post('https://api.pinterest.com/v5/pins', {
+    board_id: boardId,
+    title: (title || 'SuperSpeech').slice(0, 100),
+    description: (text || '').slice(0, 500),
+    link: link || 'https://superspeech.biz',
+    media_source: { source_type: 'image_url', url: imageUrl }
+  }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 30000 });
+  return { platform: 'pinterest', id: res.data.id };
+}
+
 async function threadsTokenDaysLeft() {
   try {
     const doc = await db.collection('config').doc('threadsToken').get();
@@ -176,18 +247,20 @@ const POSTERS = {
   instagram: postToInstagram,
   threads: postToThreads,
   mastodon: postToMastodon,
-  bluesky: postToBluesky
+  bluesky: postToBluesky,
+  pinterest: postToPinterest
 };
 
 // platforms: array of keys. captions: {platform: text}. imageUrl: card URL.
+// title: pin/post title (Pinterest). link: destination URL (Pinterest).
 // Per-platform failure shouldn't sink the whole post.
-async function publishPost({ captions, imageUrl, platforms }) {
+async function publishPost({ captions, imageUrl, platforms, title, link }) {
   const results = {};
   for (const p of platforms) {
     const poster = POSTERS[p];
     if (!poster) { results[p] = { success: false, error: 'unknown platform' }; continue; }
     try {
-      results[p] = { success: true, ...(await poster(captions[p] || captions.default || '', imageUrl)) };
+      results[p] = { success: true, ...(await poster(captions[p] || captions.default || '', imageUrl, title, link)) };
     } catch (e) {
       results[p] = { success: false, error: e.response?.data?.error?.message || e.response?.data?.error_description || e.message };
     }
