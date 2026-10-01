@@ -219,6 +219,19 @@ async function sendRedditLeadAlert(toEmail, lead) {
   }
 }
 
+async function sendSocialDigest(toEmail, html) {
+  const mailOptions = {
+    from: `SuperSpeech <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
+    to: toEmail,
+    subject: 'SuperSpeech Daily Social Digest',
+    html,
+    text: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+  };
+  const info = await transporter.sendMail(mailOptions);
+  console.log('Social digest sent:', info.messageId);
+  return { success: true, messageId: info.messageId };
+}
+
 async function verifyEmailConnection() {
   try {
     await transporter.verify();
@@ -237,6 +250,7 @@ module.exports = {
   sendContactReply,
   sendContactCopyToBusiness,
   sendRedditLeadAlert,
+  sendSocialDigest,
   verifyEmailConnection,
   transporter
 };

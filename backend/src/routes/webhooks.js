@@ -18,6 +18,16 @@ router.post('/mailing-list-send', webhookController.handleMailingListSend);
 // AI social poster: generates a post from the content guide + publishes cards
 router.post('/social-post', socialPostController.handleSocialPost);
 
+// On-demand social digest email (the nightly job also calls this internally)
+router.post('/social-digest', async (req, res) => {
+  try {
+    const digest = require('../services/socialDigestService');
+    res.json({ success: true, ...(await digest.collectAndSend()) });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 router.get('/tips', webhookController.handleGetTips);
 
 router.post('/test', webhookController.handleTestWebhook);

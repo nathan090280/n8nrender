@@ -1,6 +1,7 @@
 const contentEngine = require('./contentEngine');
 const socialPostService = require('./socialPostService');
 const { db } = require('../config/firebase');
+const { londonNow } = require('../utils/londonTime');
 
 // Daily social poster. One branded card post per day at 18:00 UK time,
 // following the owner's content guide (src/content/social-content-guide.md).
@@ -13,21 +14,9 @@ const { db } = require('../config/firebase');
 // the daily slot without a code change.
 
 const POST_HOUR = parseInt(process.env.SOCIAL_POST_HOUR || '18', 10);
+const DIGEST_HOUR = parseInt(process.env.SOCIAL_DIGEST_HOUR || '21', 10);
+const DIGEST_MINUTE = parseInt(process.env.SOCIAL_DIGEST_MINUTE || '30', 10);
 const TICK_MS = 60 * 1000;
-
-function londonNow() {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/London',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false
-  }).formatToParts(new Date());
-  const get = (t) => parts.find(p => p.type === t)?.value;
-  return {
-    date: `${get('year')}-${get('month')}-${get('day')}`,
-    hour: parseInt(get('hour'), 10),
-    minute: parseInt(get('minute'), 10)
-  };
-}
 
 // Full pipeline: guide -> Claude -> card -> publish -> Firestore record.
 // Shared by the scheduler tick and the /api/webhooks/social-post endpoint.
@@ -96,8 +85,29 @@ async function alreadyPostedToday(londonDate) {
   } catch { return false; }
 }
 
+async function alreadySentDigestToday(londonDate) {
+  try {
+    const doc = await db.collection('digestLog').doc(londonDate).get();
+    return doc.exists;
+  } catch { return false; }
+}
+
 async function tick() {
   const now = londonNow();
+
+  // Nightly digest email at 21:30 UK
+  if (now.hour === DIGEST_HOUR && now.minute >= DIGEST_MINUTE && !(await alreadySentDigestToday(now.date))) {
+    try {
+      const digest = require('./socialDigestService'); // lazy - avoids a require cycle
+      const result = await digest.collectAndSend();
+      await db.collection('digestLog').doc(now.date).set({ sentAt: new Date().toISOString(), result });
+      console.log(`[Social] Daily digest emailed for ${now.date}`);
+    } catch (e) {
+      console.error('[Social] Digest failed:', e.message);
+    }
+    return;
+  }
+
   if (now.hour !== POST_HOUR) return;
   if (await alreadyPostedToday(now.date)) return;
 
@@ -113,9 +123,9 @@ async function tick() {
 }
 
 function start() {
-  console.log(`[Social] Daily poster armed - fires at ${POST_HOUR}:00 Europe/London`);
+  console.log(`[Social] Daily poster armed - posts at ${POST_HOUR}:00, digest at ${DIGEST_HOUR}:${String(DIGEST_MINUTE).padStart(2, '0')} Europe/London`);
   setInterval(tick, TICK_MS);
   tick(); // covers the case where the server boots inside the posting hour
 }
 
-module.exports = { start, runPostJob, londonNow };
+module.exports = { start, runPostJob };
