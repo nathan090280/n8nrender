@@ -31,8 +31,9 @@ function londonNow() {
 
 // Full pipeline: guide -> Claude -> card -> publish -> Firestore record.
 // Shared by the scheduler tick and the /api/webhooks/social-post endpoint.
-async function runPostJob({ platforms, topic, category, dryRun } = {}) {
-  const post = await contentEngine.generatePost({ topic, category });
+// `manual` mode skips generation: {captions:{...}, cardHeadline, cardSub} as-is.
+async function runPostJob({ platforms, topic, category, dryRun, manual } = {}) {
+  const post = manual || await contentEngine.generatePost({ topic, category });
 
   // Card media URLs point at the Render origin - platforms fetch the image
   // themselves, so no Netlify proxy dependency.
@@ -42,7 +43,9 @@ async function runPostJob({ platforms, topic, category, dryRun } = {}) {
   const wanted = platforms && platforms.length ? platforms
     : Object.keys(socialPostService.POSTERS);
 
-  const captions = {
+  // Manual mode may pass captions already keyed per platform; generated
+  // posts get mapped (fb/ig distinct, "short" shared for mastodon+bluesky).
+  const captions = post.captionsByPlatform || {
     facebook: post.captions?.facebook,
     instagram: post.captions?.instagram,
     mastodon: post.captions?.short,
