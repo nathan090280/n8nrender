@@ -1,6 +1,7 @@
 const aiService = require('../services/aiService');
 const emailService = require('../services/emailService');
 const firebaseService = require('../services/firebaseService');
+const stripeService = require('../services/stripeService');
 const { processInboundEmail } = require('../services/inboundEmailService');
 
 async function handleQuestionnaireCompletion(req, res) {
@@ -53,7 +54,48 @@ async function handleQuestionnaireCompletion(req, res) {
     };
     
     const savedQuestionnaire = await firebaseService.saveQuestionnaire(userId, normalizedData);
-    
+
+    // If Stripe is configured, payment comes first (unless this is a
+    // whitelisted test address). Speech generation happens on the
+    // checkout.session.completed webhook.
+    if (stripeService.isEnabled() && !stripeService.isBypassed(email)) {
+      const session = await stripeService.createCheckoutSession({
+        questionnaireId: savedQuestionnaire.questionnaireId,
+        packageTier: normalizedData.package,
+        email,
+        occasionLabel: normalizedData.occasionType
+      });
+      await firebaseService.updateQuestionnaireStatus(
+        savedQuestionnaire.questionnaireId,
+        'pending_payment',
+        { stripeSessionId: session.sessionId }
+      );
+      return res.json({
+        success: true,
+        requiresPayment: true,
+        clientSecret: session.clientSecret,
+        questionnaireId: savedQuestionnaire.questionnaireId
+      });
+    }
+
+    const result = await fulfilOrder(normalizedData, savedQuestionnaire.questionnaireId);
+    return res.json(result);
+
+  } catch (error) {
+    console.error('Error handling questionnaire completion:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      details: 'Failed to process questionnaire'
+    });
+  }
+}
+
+// Generate + email + store the speech for a paid (or bypassed) order
+async function fulfilOrder(normalizedData, questionnaireId) {
+    const { email, name, userId } = normalizedData;
+
     console.log('Generating speech with AI...');
     
     // Generate AI speech - NO FALLBACK, this is what customers are paying for!
@@ -68,7 +110,7 @@ async function handleQuestionnaireCompletion(req, res) {
     console.log('✓ AI speech generated successfully');
     
     const speechData = {
-      questionnaireId: savedQuestionnaire.questionnaireId,
+      questionnaireId,
       userId,
       userEmail: email,  // For dashboard query
       recipientEmail: email,
@@ -99,15 +141,15 @@ async function handleQuestionnaireCompletion(req, res) {
     }
     
     await firebaseService.updateQuestionnaireStatus(
-      savedQuestionnaire.questionnaireId,
+      questionnaireId,
       'completed',
-      { 
+      {
         speechSent: emailSent,
         emailSentAt: emailSent ? new Date().toISOString() : null,
         emailMessageId: emailMessageId
       }
     );
-    
+
     if (userId) {
       await firebaseService.saveDashboardData(userId, {
         type: 'speech_generated',
@@ -117,24 +159,14 @@ async function handleQuestionnaireCompletion(req, res) {
         emailSent: emailSent
       });
     }
-    
-    return res.json({
+
+    return {
       success: true,
       message: emailSent ? 'Speech generated and sent successfully' : 'Speech generated and saved (email failed)',
-      questionnaireId: savedQuestionnaire.questionnaireId,
-      emailSent: emailSent,
+      questionnaireId,
+      emailSent,
       dashboardUpdated: !!userId
-    });
-    
-  } catch (error) {
-    console.error('Error handling questionnaire completion:', error);
-    
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-      details: 'Failed to process questionnaire and generate speech'
-    });
-  }
+    };
 }
 
 async function handleIncomingEmail(req, res) {
@@ -317,10 +349,64 @@ async function handleTestWebhook(req, res) {
   });
 }
 
+// Stripe sends checkout.session.completed here once payment clears.
+// NOTE: this route must be mounted with express.raw() BEFORE bodyParser,
+// because signature verification needs the untouched request body.
+async function handleStripeWebhook(req, res) {
+  const signature = req.headers['stripe-signature'];
+
+  let event;
+  try {
+    event = stripeService.constructWebhookEvent(req.body, signature);
+  } catch (err) {
+    console.warn('Stripe webhook signature verification failed:', err.message);
+    return res.status(400).send('Invalid signature');
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const questionnaireId = session.metadata && session.metadata.questionnaireId;
+    console.log('Stripe payment completed for questionnaire:', questionnaireId);
+
+    try {
+      if (!questionnaireId) throw new Error('No questionnaireId in session metadata');
+
+      const questionnaire = await firebaseService.getQuestionnaireById(questionnaireId);
+      if (!questionnaire) {
+        throw new Error('Questionnaire not found: ' + questionnaireId);
+      }
+      if (questionnaire.status === 'completed') {
+        console.log('Questionnaire already fulfilled, ignoring duplicate webhook');
+        return res.json({ received: true });
+      }
+
+      const q = questionnaire;
+      const normalizedData = {
+        ...q,
+        email: q.email,
+        name: q.name,
+        userId: q.userId,
+        paidAt: new Date().toISOString(),
+        stripeSessionId: session.id
+      };
+
+      await fulfilOrder(normalizedData, questionnaireId);
+      console.log('✓ Paid order fulfilled:', questionnaireId);
+    } catch (err) {
+      console.error('Failed to fulfil paid order:', err);
+      // Still 500 so Stripe retries - a paid but unfulfilled order is the worst state
+      return res.status(500).json({ received: true, error: err.message });
+    }
+  }
+
+  return res.json({ received: true });
+}
+
 module.exports = {
   handleQuestionnaireCompletion,
   handleIncomingEmail,
   handleEditRequest,
   handleContactForm,
-  handleTestWebhook
+  handleTestWebhook,
+  handleStripeWebhook
 };

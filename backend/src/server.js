@@ -7,6 +7,7 @@ const bodyParser = require('body-parser');
 const rateLimit = require('express-rate-limit');
 
 const webhookRoutes = require('./routes/webhooks');
+const webhookController = require('./controllers/webhookController');
 const emailService = require('./services/emailService');
 const firebaseService = require('./services/firebaseService');
 const imapPoller = require('./services/imapPoller');
@@ -22,6 +23,14 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors());
 app.use(morgan('combined'));
+
+// Stripe webhook: must see the RAW body for signature verification, so it
+// is mounted before bodyParser. Stripe authenticates via its own signature,
+// so this route is intentionally outside the API-key webhook middleware.
+app.post('/api/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
+  webhookController.handleStripeWebhook);
+
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
