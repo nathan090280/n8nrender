@@ -14,8 +14,8 @@ const socialScheduler = require('../services/socialScheduler');
 // daily 18:00 UK scheduler uses exactly the same pipeline as manual calls.
 async function handleSocialPost(req, res) {
   try {
-    const { platforms, topic, category, dryRun } = req.body || {};
-    const result = await socialScheduler.runPostJob({ platforms, topic, category, dryRun });
+    const { platforms, topic, category, dryRun, manual } = req.body || {};
+    const result = await socialScheduler.runPostJob({ platforms, topic, category, dryRun, manual });
     res.json(result);
   } catch (error) {
     console.error('Social post failed:', error.response?.data || error.message);
