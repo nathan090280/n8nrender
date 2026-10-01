@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 
 const webhookRoutes = require('./routes/webhooks');
 const webhookController = require('./controllers/webhookController');
+const tipsPageController = require('./controllers/tipsPageController');
 const emailService = require('./services/emailService');
 const firebaseService = require('./services/firebaseService');
 const imapPoller = require('./services/imapPoller');
@@ -75,6 +76,12 @@ app.use('/api/webhooks', webhookRoutes);
 
 // Public unsubscribe link target - signed token in the URL, no API key
 app.get('/api/unsubscribe', webhookController.handleUnsubscribe);
+
+// Public SEO tip pages - Netlify proxies superspeech.biz/tips* here so Google
+// gets server-rendered HTML from Firestore. Also serves the live sitemap.
+app.get('/public/tips', tipsPageController.renderTipsIndex);
+app.get('/public/tips/:slug', tipsPageController.renderTipPage);
+app.get('/public/sitemap.xml', tipsPageController.renderSitemap);
 
 // Dashboard endpoint - requires the logged-in user's Netlify Identity JWT.
 // The token is verified against the site's own Netlify Identity service,
