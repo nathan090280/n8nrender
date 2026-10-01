@@ -174,7 +174,10 @@ async function sendContactCopyToBusiness(customerName, customerEmail, subject, m
 // Alerts Nathan when the Reddit listener finds a speech-help post.
 // The draft reply is for him to review and post manually - never auto-posted.
 async function sendRedditLeadAlert(toEmail, lead) {
-  const postUrl = `https://www.reddit.com${lead.permalink}`;
+  // permalink is a /r/... path for Reddit API leads, a full URL for RSS leads
+  const postUrl = String(lead.permalink || '').startsWith('http')
+    ? lead.permalink
+    : `https://www.reddit.com${lead.permalink}`;
   const safe = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const mailOptions = {
     from: `SuperSpeech Leads <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
