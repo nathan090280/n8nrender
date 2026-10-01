@@ -59,7 +59,7 @@ function tipCardSvg({ title, excerpt }) {
 // Social card variant for pages/branding posts (e.g. sharing the site itself)
 function brandCardSvg({ headline, sub }) {
   const headlineLines = wrapText(headline, 18).slice(0, 3);
-  const subLines = wrapText(sub, 46).slice(0, 3);
+  const subLines = wrapText(sub, 40).slice(0, 4);
   return `<svg width="1080" height="1080" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
