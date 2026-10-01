@@ -1,14 +1,17 @@
 const nodemailer = require('nodemailer');
 
+const smtpPort = parseInt(process.env.EMAIL_PORT) || 587;
+const smtpSecure = process.env.EMAIL_SECURE === 'true' || smtpPort === 465;
+
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'mail.spacemail.com',
-  port: parseInt(process.env.EMAIL_PORT) || 587,
-  secure: false, // Use STARTTLS on port 587
+  port: smtpPort,
+  secure: smtpSecure, // implicit TLS on 465, STARTTLS on 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
   },
-  requireTLS: true,
+  requireTLS: !smtpSecure,
   tls: {
     rejectUnauthorized: false
   },
