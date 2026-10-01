@@ -2,6 +2,7 @@ const aiService = require('../services/aiService');
 const emailService = require('../services/emailService');
 const firebaseService = require('../services/firebaseService');
 const stripeService = require('../services/stripeService');
+const mailingListService = require('../services/mailingListService');
 const { processInboundEmail } = require('../services/inboundEmailService');
 
 async function handleQuestionnaireCompletion(req, res) {
@@ -431,6 +432,57 @@ async function handleMailingListSignup(req, res) {
   }
 }
 
+// Agent-facing campaign sender (API-key protected via the webhooks router).
+// Body: { subject, html, text } - sent to every active mailing-list subscriber.
+async function handleMailingListSend(req, res) {
+  try {
+    const { subject, html, text } = req.body || {};
+    if (!subject || (!html && !text)) {
+      return res.status(400).json({
+        success: false,
+        error: 'subject and html (or text) are required'
+      });
+    }
+
+    const results = await mailingListService.sendCampaign({
+      subject,
+      html: html || text.replace(/\n/g, '<br>'),
+      text: text || html.replace(/<[^>]+>/g, '')
+    });
+
+    return res.json({ success: true, ...results });
+  } catch (error) {
+    console.error('Mailing list send error:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+// Public unsubscribe endpoint - the signed link lives in every campaign footer.
+async function handleUnsubscribe(req, res) {
+  const { email, t } = req.query;
+
+  const page = (heading, message) => res.status(200).send(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${heading} - SuperSpeech</title></head>
+<body style="margin:0;font-family:Arial,Helvetica,sans-serif;background:#f1f5f9;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+<div style="background:#fff;border-radius:12px;padding:2.5rem;max-width:420px;text-align:center;box-shadow:0 10px 15px rgba(0,0,0,0.1);">
+<h1 style="font-size:1.4rem;margin:0 0 0.75rem;color:#1e293b;">${heading}</h1>
+<p style="color:#475569;line-height:1.6;margin:0 0 1rem;">${message}</p>
+<a href="https://superspeech.biz" style="color:#2563eb;">Back to superspeech.biz</a>
+</div></body></html>`);
+
+  if (!email || !mailingListService.verifyUnsubscribeToken(email, t)) {
+    return page('Invalid link', 'This unsubscribe link is not valid. If you want to leave the list, email us at hello@superspeech.biz.');
+  }
+
+  try {
+    await firebaseService.unsubscribeMailingList(email.trim().toLowerCase());
+    return page('You\'re unsubscribed', 'You\'ve been removed from the SuperSpeech mailing list and won\'t receive any more updates or offers. Sorry to see you go!');
+  } catch (error) {
+    console.error('Unsubscribe error:', error);
+    return page('Something went wrong', 'We couldn\'t process that right now. Please try again later or email hello@superspeech.biz.');
+  }
+}
+
 async function handleGetTips(req, res) {
   try {
     const tips = await firebaseService.getPublishedTips();
@@ -452,5 +504,7 @@ module.exports = {
   handleTestWebhook,
   handleStripeWebhook,
   handleMailingListSignup,
-  handleGetTips
+  handleGetTips,
+  handleMailingListSend,
+  handleUnsubscribe
 };

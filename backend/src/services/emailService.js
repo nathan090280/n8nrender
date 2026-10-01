@@ -185,5 +185,6 @@ module.exports = {
   sendUpdatedSpeech,
   sendContactReply,
   sendContactCopyToBusiness,
-  verifyEmailConnection
+  verifyEmailConnection,
+  transporter
 };

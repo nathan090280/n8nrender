@@ -73,6 +73,9 @@ app.use('/api/webhooks', (req, res, next) => {
 
 app.use('/api/webhooks', webhookRoutes);
 
+// Public unsubscribe link target - signed token in the URL, no API key
+app.get('/api/unsubscribe', webhookController.handleUnsubscribe);
+
 // Dashboard endpoint - requires the logged-in user's Netlify Identity JWT.
 // The token is verified against the site's own Netlify Identity service,
 // then the verified email must match the requested one.

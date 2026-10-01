@@ -12,6 +12,8 @@ router.post('/contact-form', webhookController.handleContactForm);
 
 router.post('/mailing-list', webhookController.handleMailingListSignup);
 
+router.post('/mailing-list-send', webhookController.handleMailingListSend);
+
 router.get('/tips', webhookController.handleGetTips);
 
 router.post('/test', webhookController.handleTestWebhook);

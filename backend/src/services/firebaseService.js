@@ -381,6 +381,41 @@ async function getPublishedTips() {
   }
 }
 
+async function unsubscribeMailingList(email) {
+  try {
+    const snapshot = await db.collection('mailingList')
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return { success: false, notFound: true };
+
+    await snapshot.docs[0].ref.update({
+      unsubscribed: true,
+      unsubscribedAt: new Date().toISOString()
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error unsubscribing mailing list email:', error);
+    throw error;
+  }
+}
+
+async function getMailingListSubscribers() {
+  try {
+    const snapshot = await db.collection('mailingList').get();
+    const emails = [];
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      if (d.email && !d.unsubscribed) emails.push(d.email);
+    });
+    return emails;
+  } catch (error) {
+    console.error('Error fetching mailing list subscribers:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   saveQuestionnaire,
   saveSpeech,
@@ -396,5 +431,7 @@ module.exports = {
   markStaleSpeechesCompleted,
   saveContactInteraction,
   saveMailingListSignup,
-  getPublishedTips
+  getPublishedTips,
+  unsubscribeMailingList,
+  getMailingListSubscribers
 };
