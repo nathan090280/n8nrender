@@ -242,7 +242,7 @@ async function renderTipCard(req, res) {
 
     const png = await imageCardService.renderCard(imageCardService.tipCardSvg({
       title: tip.title,
-      excerpt: excerpt(tip.body, 200)
+      excerpt: excerpt(tip.body, 168)
     }));
     res.set('Content-Type', 'image/png');
     res.set('Cache-Control', 'public, max-age=86400'); // cards are deterministic; cache a day
