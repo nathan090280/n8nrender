@@ -175,6 +175,18 @@ async function threadsMetrics() {
   return out;
 }
 
+async function pinterestMetrics() {
+  const res = await axios.get('https://api.pinterest.com/v5/user_account', {
+    headers: { Authorization: `Bearer ${process.env.PINTEREST_ACCESS_TOKEN}` }, timeout: 15000 });
+  const d = res.data;
+  return {
+    followers: d.follower_count,
+    pins: d.pin_count,
+    boards: d.board_count,
+    monthlyViews: d.monthly_views >= 0 ? d.monthly_views : 'n/a'
+  };
+}
+
 function row(label, m, extra = '') {
   if (!m) return `<tr><td style="padding:8px 12px;border:1px solid #e2e8f0;"><b>${label}</b></td><td style="padding:8px 12px;border:1px solid #e2e8f0;" colspan="3">unavailable</td></tr>`;
   const cells = Object.entries(m).map(([k, v]) =>
@@ -187,12 +199,13 @@ async function collectAndSend() {
   const fbIds = posts.map(p => p.results?.facebook?.id).filter(Boolean);
   const igIds = posts.map(p => p.results?.instagram?.id).filter(Boolean);
 
-  const [fb, ig, threads, masto, bsky, site] = await Promise.all([
+  const [fb, ig, threads, masto, bsky, pin, site] = await Promise.all([
     facebookMetrics(fbIds).catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     instagramMetrics(igIds).catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     threadsMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     mastodonMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message })),
     blueskyMetrics().catch(e => ({ error: e.response?.data?.error?.message || e.message })),
+    pinterestMetrics().catch(e => ({ error: e.response?.data?.message || e.message })),
     siteAndBusiness().catch(e => ({ error: e.message }))
   ]);
 
@@ -212,13 +225,14 @@ ${row('Instagram', ig)}
 ${row('Threads', threads)}
 ${row('Mastodon', masto)}
 ${row('Bluesky', bsky)}
+${row('Pinterest', pin)}
 ${row('Site & Business', site)}
 </table>
 <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Sent automatically by the SuperSpeech social engine. Gaps mean the platform API didn't expose the metric (often missing scopes) - not necessarily zero.</p>
 </body></html>`;
 
   await emailService.sendSocialDigest(DIGEST_TO, html);
-  return { fb, ig, threads, masto, bsky, site, posts: posts.length };
+  return { fb, ig, threads, masto, bsky, pin, site, posts: posts.length };
 }
 
 module.exports = { collectAndSend };
