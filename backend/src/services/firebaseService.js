@@ -332,6 +332,55 @@ async function saveContactInteraction(interactionData) {
   }
 }
 
+async function saveMailingListSignup(email) {
+  try {
+    const existing = await db.collection('mailingList')
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+
+    if (!existing.empty) {
+      return { success: true, alreadySubscribed: true };
+    }
+
+    const ref = await db.collection('mailingList').add({
+      email,
+      source: 'website',
+      subscribedAt: new Date().toISOString()
+    });
+
+    return { success: true, id: ref.id };
+  } catch (error) {
+    console.error('Error saving mailing list signup:', error);
+    throw error;
+  }
+}
+
+async function getPublishedTips() {
+  try {
+    const snapshot = await db.collection('tips')
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
+
+    const tips = [];
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      if (d.published === false) return;
+      tips.push({
+        id: doc.id,
+        title: d.title || 'Tip',
+        body: d.body || '',
+        createdAt: d.createdAt || null
+      });
+    });
+    return tips;
+  } catch (error) {
+    console.error('Error fetching tips:', error);
+    throw error;
+  }
+}
+
 module.exports = {
   saveQuestionnaire,
   saveSpeech,
@@ -345,5 +394,7 @@ module.exports = {
   getSpeechById,
   countEditsForChain,
   markStaleSpeechesCompleted,
-  saveContactInteraction
+  saveContactInteraction,
+  saveMailingListSignup,
+  getPublishedTips
 };

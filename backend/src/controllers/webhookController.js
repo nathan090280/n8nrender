@@ -402,11 +402,55 @@ async function handleStripeWebhook(req, res) {
   return res.json({ received: true });
 }
 
+async function handleMailingListSignup(req, res) {
+  try {
+    const email = ((req.body && req.body.email) || '').trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid email address'
+      });
+    }
+
+    const result = await firebaseService.saveMailingListSignup(email);
+
+    return res.json({
+      success: true,
+      alreadySubscribed: !!result.alreadySubscribed,
+      message: result.alreadySubscribed
+        ? 'You are already on the list!'
+        : 'Thanks for subscribing!'
+    });
+  } catch (error) {
+    console.error('Mailing list signup error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Could not subscribe right now. Please try again later.'
+    });
+  }
+}
+
+async function handleGetTips(req, res) {
+  try {
+    const tips = await firebaseService.getPublishedTips();
+    return res.json({ success: true, tips });
+  } catch (error) {
+    console.error('Get tips error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Could not load tips'
+    });
+  }
+}
+
 module.exports = {
   handleQuestionnaireCompletion,
   handleIncomingEmail,
   handleEditRequest,
   handleContactForm,
   handleTestWebhook,
-  handleStripeWebhook
+  handleStripeWebhook,
+  handleMailingListSignup,
+  handleGetTips
 };

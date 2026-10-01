@@ -10,6 +10,10 @@ router.post('/edit-request', webhookController.handleEditRequest);
 
 router.post('/contact-form', webhookController.handleContactForm);
 
+router.post('/mailing-list', webhookController.handleMailingListSignup);
+
+router.get('/tips', webhookController.handleGetTips);
+
 router.post('/test', webhookController.handleTestWebhook);
 router.get('/test', webhookController.handleTestWebhook);
 
