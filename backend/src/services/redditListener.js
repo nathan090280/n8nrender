@@ -36,20 +36,26 @@ let oauthToken = null;
 let oauthExpiresAt = 0;
 
 // Optional: script-app creds give oauth.reddit.com access + better limits.
-// Without them the public JSON endpoints still work fine at this volume.
+// New-style apps authenticate as the linked account (password grant); older
+// script apps can also mint app-only tokens via client_credentials. Without
+// any creds the public JSON endpoints are tried (datacenter IPs often 403).
 async function getAccessToken() {
   const id = process.env.REDDIT_CLIENT_ID;
   const secret = process.env.REDDIT_CLIENT_SECRET;
   if (!id || !secret) return null;
   if (oauthToken && Date.now() < oauthExpiresAt) return oauthToken;
 
-  const res = await axios.post('https://www.reddit.com/api/v1/access_token',
-    'grant_type=client_credentials',
-    {
-      auth: { username: id, password: secret },
-      headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
-      timeout: 15000
-    });
+  const user = process.env.REDDIT_USERNAME;
+  const pass = process.env.REDDIT_PASSWORD;
+  const grant = (user && pass)
+    ? `grant_type=password&username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`
+    : 'grant_type=client_credentials';
+
+  const res = await axios.post('https://www.reddit.com/api/v1/access_token', grant, {
+    auth: { username: id, password: secret },
+    headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
+    timeout: 15000
+  });
   oauthToken = res.data.access_token;
   oauthExpiresAt = Date.now() + (res.data.expires_in - 60) * 1000;
   return oauthToken;
