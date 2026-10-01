@@ -20,8 +20,10 @@ async function handleSocialPost(req, res) {
 
     const post = await contentEngine.generatePost({ topic, category });
 
+    // Card media URLs point at the Render origin directly - works even before
+    // the Netlify /media/* proxy change deploys, and platforms just fetch it.
     const cardUrl = (ext) =>
-      `https://superspeech.biz/media/card.${ext}?h=${encodeURIComponent(post.cardHeadline)}&s=${encodeURIComponent(post.cardSub || '')}`;
+      `https://superspeech-backend.onrender.com/public/media/card.${ext}?h=${encodeURIComponent(post.cardHeadline)}&s=${encodeURIComponent(post.cardSub || '')}`;
 
     const wanted = platforms && platforms.length ? platforms
       : Object.keys(socialPostService.POSTERS);
