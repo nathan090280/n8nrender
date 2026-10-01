@@ -1,4 +1,5 @@
 const firebaseService = require('../services/firebaseService');
+const imageCardService = require('../services/imageCardService');
 
 const SITE_URL = 'https://superspeech.biz';
 
@@ -100,7 +101,7 @@ function setPublicHeaders(res, contentType) {
   res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' https: data:");
 }
 
-function pageShell({ title, description, canonical, content, jsonLd }) {
+function pageShell({ title, description, canonical, content, jsonLd, ogImage }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -113,7 +114,7 @@ function pageShell({ title, description, canonical, content, jsonLd }) {
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:url" content="${canonical}">
   <meta property="og:type" content="article">
-  <meta property="og:image" content="${SITE_URL}/images/icon-1024.png">
+  <meta property="og:image" content="${ogImage || `${SITE_URL}/images/icon-1024.png`}">
   <meta name="twitter:card" content="summary_large_image">
   ${jsonLd ? `<script type="application/ld+json">${jsonLd}</script>` : ''}
   ${PAGE_STYLES}
@@ -191,6 +192,7 @@ async function renderTipPage(req, res) {
 
     const canonical = `${SITE_URL}/tips/${slug}`;
     const desc = excerpt(tip.body);
+    const ogImage = `${SITE_URL}/media/tip/${slug}.png`;
     const jsonLd = JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'Article',
@@ -220,11 +222,34 @@ async function renderTipPage(req, res) {
       description: desc,
       canonical,
       content,
-      jsonLd
+      jsonLd,
+      ogImage
     }));
   } catch (error) {
     console.error('Tip page error:', error);
     res.status(500).send('Could not load tip');
+  }
+}
+
+// Serves a branded 1080x1080 PNG for a tip - used as og:image on tip pages
+// and as the media URL when posting the tip to social channels.
+async function renderTipCard(req, res) {
+  try {
+    const slug = req.params.slug;
+    const tips = await firebaseService.getPublishedTips();
+    const tip = tips.find(t => slugify(t.title) === slug);
+    if (!tip) return res.status(404).send('No such tip');
+
+    const png = await imageCardService.renderCard(imageCardService.tipCardSvg({
+      title: tip.title,
+      excerpt: excerpt(tip.body, 200)
+    }));
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400'); // cards are deterministic; cache a day
+    res.send(png);
+  } catch (error) {
+    console.error('Tip card error:', error);
+    res.status(500).send('Card render failed');
   }
 }
 
@@ -245,4 +270,4 @@ async function renderSitemap(req, res) {
   }
 }
 
-module.exports = { renderTipsIndex, renderTipPage, renderSitemap, slugify };
+module.exports = { renderTipsIndex, renderTipPage, renderSitemap, renderTipCard, slugify };
