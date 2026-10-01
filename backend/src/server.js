@@ -13,6 +13,7 @@ const emailService = require('./services/emailService');
 const firebaseService = require('./services/firebaseService');
 const imapPoller = require('./services/imapPoller');
 const redditListener = require('./services/redditListener');
+const socialScheduler = require('./services/socialScheduler');
 const axios = require('axios');
 const { db } = require('./config/firebase');
 
@@ -272,6 +273,9 @@ async function startServer() {
 
     // Watch Reddit for speech-help posts; drafts replies + emails Nathan
     redditListener.start();
+
+    // Daily branded card post to all connected socials at 18:00 UK
+    socialScheduler.start();
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`
