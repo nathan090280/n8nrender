@@ -5,7 +5,7 @@ async function saveQuestionnaire(userId, questionnaireData) {
     const questionnaireRef = db.collection('questionnaires').doc();
     const data = {
       ...questionnaireData,
-      userId,
+      userId: userId || null,
       createdAt: new Date().toISOString(),
       status: 'pending'
     };
@@ -32,7 +32,7 @@ async function saveSpeech(userId, speechData) {
     
     const data = {
       ...speechData,
-      userId,
+      userId: userId || null,
       createdAt: now,
       status: 'in_progress',
       estimatedCompletionAt: completionTime
