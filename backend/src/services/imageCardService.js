@@ -56,25 +56,45 @@ function tipCardSvg({ title, excerpt }) {
 </svg>`;
 }
 
-// Social card variant for pages/branding posts (e.g. sharing the site itself)
-function brandCardSvg({ headline, sub }) {
+// Palette rotation - cards shouldn't all look identical in a feed.
+// Same headline always picks the same theme (deterministic by string hash),
+// so every platform's fetch of one post's card URL renders identically.
+const THEMES = [
+  { from: '#2563eb', to: '#7c3aed', fg: '#ffffff', sub: 'rgba(255,255,255,0.85)', accent: 'rgba(255,255,255,0.6)', brand: 'rgba(255,255,255,0.9)' },
+  { from: '#7c3aed', to: '#db2777', fg: '#ffffff', sub: 'rgba(255,255,255,0.85)', accent: 'rgba(255,255,255,0.6)', brand: 'rgba(255,255,255,0.9)' },
+  { from: '#0d9488', to: '#2563eb', fg: '#ffffff', sub: 'rgba(255,255,255,0.85)', accent: 'rgba(255,255,255,0.6)', brand: 'rgba(255,255,255,0.9)' },
+  { from: '#1e293b', to: '#334155', fg: '#ffffff', sub: 'rgba(255,255,255,0.8)', accent: '#93c5fd', brand: 'rgba(255,255,255,0.9)' },
+  { from: '#f8fafc', to: '#e0e7ff', fg: '#1e293b', sub: 'rgba(30,41,59,0.75)', accent: '#7c3aed', brand: '#2563eb', light: true }
+];
+
+function themeFor(text) {
+  let h = 0;
+  for (const c of String(text)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return THEMES[h % THEMES.length];
+}
+
+// Social card variant for brand/engagement posts (hooks, jokes, polls, etc.)
+function brandCardSvg({ headline, sub, theme }) {
+  const t = theme || themeFor(headline);
   const headlineLines = wrapText(headline, 18).slice(0, 3);
   const subLines = wrapText(sub, 40).slice(0, 4);
+  const deco = t.light
+    ? `<circle cx="980" cy="120" r="300" fill="rgba(124,58,237,0.08)"/><circle cx="60" cy="1010" r="260" fill="rgba(37,99,235,0.07)"/>`
+    : `<circle cx="980" cy="120" r="300" fill="rgba(255,255,255,0.06)"/><circle cx="60" cy="1010" r="260" fill="rgba(0,0,0,0.08)"/>`;
   return `<svg width="1080" height="1080" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2563eb"/>
-      <stop offset="1" stop-color="#7c3aed"/>
+      <stop offset="0" stop-color="${t.from}"/>
+      <stop offset="1" stop-color="${t.to}"/>
     </linearGradient>
   </defs>
   <rect width="1080" height="1080" fill="url(#bg)"/>
-  <circle cx="980" cy="120" r="300" fill="rgba(255,255,255,0.06)"/>
-  <circle cx="60" cy="1010" r="260" fill="rgba(0,0,0,0.08)"/>
-  <text x="90" y="200" font-size="54" font-weight="800" fill="#ffffff" font-family="DejaVu Sans, Arial, sans-serif">SuperSpeech</text>
-  <rect x="90" y="240" width="140" height="8" rx="4" fill="rgba(255,255,255,0.6)"/>
-  ${headlineLines.map((l, i) => `<text x="90" y="${420 + i * 96}" font-size="84" font-weight="800" fill="#ffffff" font-family="DejaVu Sans, Arial, sans-serif">${escapeXml(l)}</text>`).join('')}
-  ${subLines.map((l, i) => `<text x="92" y="${420 + headlineLines.length * 96 + 50 + i * 54}" font-size="42" fill="rgba(255,255,255,0.85)" font-family="DejaVu Sans, Arial, sans-serif">${escapeXml(l)}</text>`).join('')}
-  <text x="90" y="1010" font-size="34" font-weight="700" fill="rgba(255,255,255,0.9)" font-family="DejaVu Sans, Arial, sans-serif">superspeech.biz</text>
+  ${deco}
+  <text x="90" y="200" font-size="54" font-weight="800" fill="${t.fg}" font-family="DejaVu Sans, Arial, sans-serif">SuperSpeech</text>
+  <rect x="90" y="240" width="140" height="8" rx="4" fill="${t.accent}"/>
+  ${headlineLines.map((l, i) => `<text x="90" y="${420 + i * 96}" font-size="84" font-weight="800" fill="${t.fg}" font-family="DejaVu Sans, Arial, sans-serif">${escapeXml(l)}</text>`).join('')}
+  ${subLines.map((l, i) => `<text x="92" y="${420 + headlineLines.length * 96 + 50 + i * 54}" font-size="42" fill="${t.sub}" font-family="DejaVu Sans, Arial, sans-serif">${escapeXml(l)}</text>`).join('')}
+  <text x="90" y="1010" font-size="34" font-weight="700" fill="${t.brand}" font-family="DejaVu Sans, Arial, sans-serif">superspeech.biz</text>
 </svg>`;
 }
 
