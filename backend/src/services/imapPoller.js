@@ -71,14 +71,17 @@ async function pollOnce() {
       // First ever run with no state: seed at the current high-water mark so
       // we don't blast replies at every old email in the box.
       if (lastUid === null) {
-        const all = await client.search({ all: true }) || [];
+        const all = await client.search({ all: true }, { uid: true }) || [];
         const max = all.length ? Math.max(...all) : 0;
         await setLastUid(max);
         console.log(`IMAP poller seeded at UID ${max} (${all.length} existing messages skipped)`);
         return;
       }
 
-      const uids = await client.search({ uid: `${lastUid + 1}:*` }) || [];
+      // {uid:true} is essential: without it search returns sequence numbers,
+      // not UIDs - expunged mail makes them diverge and we'd process the
+      // wrong messages while looping forever on lastUid.
+      const uids = await client.search({ uid: `${lastUid + 1}:*` }, { uid: true }) || [];
       for (const uid of uids) {
         const msg = await client.fetchOne(uid, { source: true }, { uid: true });
         if (!msg || !msg.source) { await setLastUid(uid); continue; }
