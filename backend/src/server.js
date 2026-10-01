@@ -79,6 +79,19 @@ app.use('/api/webhooks', webhookRoutes);
 // Public unsubscribe link target - signed token in the URL, no API key
 app.get('/api/unsubscribe', webhookController.handleUnsubscribe);
 
+// 1x1 tracking pixel - static pages on Netlify embed <img src=".../api/stats/
+// pixel?p=/some-page"> so we get real page-view counts without GA.
+const statsService = require('./services/statsService');
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgYGBgAAAABQABXvMqOgAAAABJRU5ErkJggg==', 'base64');
+app.get('/api/stats/pixel', (req, res) => {
+  const p = String(req.query.p || '/').replace(/[^a-z0-9\-\/]/gi, '').slice(0, 80) || '/';
+  statsService.track('pageViews');
+  statsService.track(`page:${p}`);
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'no-store');
+  res.send(PIXEL);
+});
+
 // Public SEO tip pages - Netlify proxies superspeech.biz/tips* here so Google
 // gets server-rendered HTML from Firestore. Also serves the live sitemap.
 app.get('/public/tips', tipsPageController.renderTipsIndex);

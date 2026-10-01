@@ -130,24 +130,32 @@ async function countToday(collection, field = 'createdAt') {
 }
 
 async function siteAndBusiness() {
-  const [views, orders, speeches, signups, contacts, tipsCount] = await Promise.all([
+  const [today, lifetime, ordersToday, ordersAll, speechesToday, speechesAll,
+    signupsToday, signupsAll, contactsToday, contactsAll, tipsCount] = await Promise.all([
     statsService.getToday(),
-    countToday('questionnaires'),
-    countToday('speeches'),
-    countToday('mailingList'),
-    countToday('contactInteractions'),
+    statsService.getLifetime(),
+    countToday('questionnaires'), collSize('questionnaires'),
+    countToday('speeches'), collSize('speeches'),
+    countToday('mailingList'), collSize('mailingList'),
+    countToday('contactInteractions'), collSize('contactInteractions'),
     db.collection('tips').where('published', '==', true).get().then(s => s.size).catch(() => null)
   ]);
+  const pair = (t, l) => `${t ?? 0} today (${l ?? 'n/a'} all-time)`;
   return {
-    tipPageViews: views.tipPageViews || 0,
-    tipsIndexViews: views.tipsIndexViews || 0,
-    cardFetches: views.cardFetches || 0,
-    newOrders: orders,
-    speechesGenerated: speeches,
-    newMailingListSignups: signups,
-    contactMessages: contacts,
+    pageViews: pair(today.pageViews, lifetime.pageViews),
+    tipPageViews: pair(today.tipPageViews, lifetime.tipPageViews),
+    tipsIndexViews: pair(today.tipsIndexViews, lifetime.tipsIndexViews),
+    cardFetches: pair(today.cardFetches, lifetime.cardFetches),
+    orders: pair(ordersToday, ordersAll),
+    speechesGenerated: pair(speechesToday, speechesAll),
+    mailingListSignups: pair(signupsToday, signupsAll),
+    contactMessages: pair(contactsToday, contactsAll),
     publishedTips: tipsCount
   };
+}
+
+async function collSize(collection) {
+  try { return (await db.collection(collection).get()).size; } catch { return null; }
 }
 
 function row(label, m, extra = '') {
