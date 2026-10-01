@@ -7,7 +7,7 @@ const aiService = require('./aiService');
 // stores the lead in Firestore and emails Nathan. Replies are never posted
 // automatically - Reddit bans drive-by promo, so a human hits submit.
 
-const POLL_INTERVAL_MS = parseInt(process.env.REDDIT_POLL_INTERVAL_MS) || 15 * 60 * 1000;
+const POLL_INTERVAL_MS = parseInt(process.env.REDDIT_POLL_INTERVAL_MS) || 6 * 60 * 60 * 1000;
 const USER_AGENT = process.env.REDDIT_USER_AGENT || 'SuperSpeechListener/1.0';
 const NOTIFY_EMAIL = process.env.REDDIT_NOTIFY_EMAIL || 'hello@superspeech.biz';
 const MAX_NEW_PER_CYCLE = 5;            // never email-bomb, even on a busy cycle
