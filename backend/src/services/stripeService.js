@@ -31,7 +31,7 @@ function priceForTier(tier) {
 
 async function createCheckoutSession({ questionnaireId, packageTier, email, occasionLabel }) {
   const session = await stripe.checkout.sessions.create({
-    ui_mode: 'embedded',
+    ui_mode: 'embedded_page',
     mode: 'payment',
     customer_email: email,
     line_items: [{ price: priceForTier(packageTier), quantity: 1 }],
