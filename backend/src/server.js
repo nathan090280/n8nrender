@@ -12,6 +12,7 @@ const tipsPageController = require('./controllers/tipsPageController');
 const emailService = require('./services/emailService');
 const firebaseService = require('./services/firebaseService');
 const imapPoller = require('./services/imapPoller');
+const redditListener = require('./services/redditListener');
 const axios = require('axios');
 const { db } = require('./config/firebase');
 
@@ -265,6 +266,9 @@ async function startServer() {
 
     // Poll the Spacemail inbox for unread customer emails and auto-reply
     imapPoller.start();
+
+    // Watch Reddit for speech-help posts; drafts replies + emails Nathan
+    redditListener.start();
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`

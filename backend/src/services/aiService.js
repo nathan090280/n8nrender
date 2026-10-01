@@ -296,9 +296,39 @@ We appreciate your patience and look forward to helping you!`;
   }
 }
 
+// Drafts a reply Nathan can review and post manually. Reddit hates drive-by
+// promo, so the draft must lead with genuinely useful advice and only softly
+// disclose the SuperSpeech connection at the end.
+async function generateRedditReply(postTitle, postBody, subreddit) {
+  const prompt = `You are drafting a Reddit comment for Nathan, who runs SuperSpeech (superspeech.biz), a paid AI speech-writing service. He will review and post this manually from his own account.
+
+A Reddit user posted in r/${subreddit}:
+
+TITLE: ${postTitle}
+
+POST:
+${(postBody || '').slice(0, 3000)}
+
+Write a reply that:
+1. Genuinely helps them FIRST - real, specific speech-writing advice that would be valuable even if they never visit the site (this is mandatory, not filler)
+2. Sounds like a human Redditor, not marketing copy - casual, warm, no bullet-point spam unless the advice genuinely needs it
+3. Ends with ONE honest disclosure line, e.g. "(Full disclosure: I run superspeech.biz, a service that writes custom speeches - happy to help either way!)"
+4. Is under 200 words total
+
+Write only the comment text, nothing else.`;
+
+  try {
+    return (await callClaude(prompt, { maxTokens: 500, temperature: 0.7 })).trim();
+  } catch (error) {
+    console.error('Reddit reply draft failed:', error.message);
+    return null;
+  }
+}
+
 module.exports = {
   generateSpeech,
   generateEmailReply,
   editSpeech,
-  generateContactReply
+  generateContactReply,
+  generateRedditReply
 };

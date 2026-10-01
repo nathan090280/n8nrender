@@ -171,6 +171,51 @@ async function sendContactCopyToBusiness(customerName, customerEmail, subject, m
   }
 }
 
+// Alerts Nathan when the Reddit listener finds a speech-help post.
+// The draft reply is for him to review and post manually - never auto-posted.
+async function sendRedditLeadAlert(toEmail, lead) {
+  const postUrl = `https://www.reddit.com${lead.permalink}`;
+  const safe = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const mailOptions = {
+    from: `SuperSpeech Leads <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
+    to: toEmail,
+    subject: `[Reddit Lead] r/${lead.subreddit}: ${(lead.title || '').slice(0, 80)}`,
+    html: `
+      <html>
+        <body style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+          <h2>New Reddit Lead</h2>
+          <p><strong>Subreddit:</strong> r/${safe(lead.subreddit)} &nbsp;|&nbsp; <strong>Author:</strong> u/${safe(lead.author)}</p>
+          <p><strong>Post:</strong> <a href="${postUrl}">${safe(lead.title)}</a></p>
+
+          <h3>Their post:</h3>
+          <div style="background: #f9f9f9; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            ${safe(lead.body).split('\n').map(p => `<p>${p}</p>`).join('')}
+          </div>
+
+          <h3>Suggested reply (review before posting!):</h3>
+          <div style="background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            ${safe(lead.draftReply).split('\n').map(p => `<p>${p}</p>`).join('')}
+          </div>
+
+          <p style="color: #666; font-size: 13px;">
+            Post this from your own Reddit account if it reads well — Reddit rewards genuine help and bans drive-by promo, so sanity-check the draft first.
+          </p>
+        </body>
+      </html>
+    `,
+    text: `New Reddit Lead\n\nr/${lead.subreddit} — ${lead.title}\n${postUrl}\n\nTheir post:\n${lead.body}\n\nSuggested reply:\n${lead.draftReply}`
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✓ Reddit lead alert sent:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Failed to send Reddit lead alert:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 async function verifyEmailConnection() {
   try {
     await transporter.verify();
@@ -188,6 +233,7 @@ module.exports = {
   sendUpdatedSpeech,
   sendContactReply,
   sendContactCopyToBusiness,
+  sendRedditLeadAlert,
   verifyEmailConnection,
   transporter
 };
