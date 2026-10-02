@@ -492,7 +492,7 @@ async function generateIdeaForNathan(context) {
   const raw = await aiService.generateSocialCopy(
     `${context}
 
-Separately from your autonomous play, invent ONE marketing idea FOR NATHAN to do himself - a quick practical task only (create an account, fill a form, post something, reply somewhere). HARD RULES: never suggest Nathan appear, speak, be interviewed, be a guest, or act as the expert face of anything - no podcasts, videos, workshops, calls. Admin-level tasks only. Specific and actionable, 2-4 steps max. Never repeat an idea from the ideas history.
+Separately from your autonomous play, invent ONE marketing idea FOR NATHAN to do himself - a quick practical task only (create an account, fill a form, post something, reply somewhere). HARD RULES: never suggest Nathan appear, speak, be interviewed, be a guest, or act as the expert face of anything - no podcasts, videos, workshops, calls. Admin-level tasks only. Specific and actionable, 2-4 steps max. The product is SuperSpeech (superspeech.biz) - never invent other product names. Never repeat an idea from the ideas history.
 
 Reply with ONLY JSON: { "title": "...", "why": "one sentence - the payoff", "steps": ["step 1", "step 2"], "effort": "e.g. 10 minutes", "impact": "e.g. long-tail search traffic" }`,
     { maxTokens: 600, temperature: 0.9 });
