@@ -2,23 +2,19 @@ const dns = require('dns').promises;
 const { db } = require('../config/firebase');
 const aiService = require('./aiService');
 const emailService = require('./emailService');
-const mailingListService = require('./mailingListService');
 const { londonNow } = require('../utils/londonTime');
 
-// The Marketing Executive: one autonomous marketing action per day at
-// MARKETING_HOUR:MARKETING_MINUTE UK, plus a separate customer follow-up
-// sweep that doesn't count against the daily action.
+// The Marketing Executive: invents ONE fresh marketing play per day at
+// MARKETING_HOUR:MARKETING_MINUTE UK and executes it alone - routine work
+// (tips, newsletter, social, follow-ups) is scheduled elsewhere. Plays may
+// include ONE targeted cold email/day (MX-validated, never repeated, BCC'd
+// to Nathan); anything needing a human-only step gets flagged in the
+// daily report email to hello@.
 //
-// Claude sees the action history and picks ONE activity as JSON; code
-// executes it. Rail: outbound email only ever goes to real subscribers or
-// paying customers. Cold outreach is drafted and emailed to hello@ for a
-// human to forward - no auto-spamming strangers.
-//
-// Every action is logged to Firestore marketingActions and surfaced in the
-// nightly digest.
+// Every action logs to Firestore marketingActions, surfaces in the nightly
+// digest, and gets its own report email.
 
 const AGENT_EMAIL = process.env.MARKETING_AGENT_EMAIL || 'hello@superspeech.biz';
-const NEWSLETTER_MIN_GAP_DAYS = 5;
 const FOLLOWUP_MIN_DAYS = 3;
 const FOLLOWUP_MAX_DAYS = 6;
 const FOLLOWUP_MAX_PER_DAY = 3;
@@ -26,21 +22,25 @@ const FOLLOWUP_MAX_PER_DAY = 3;
 const AGENT_CONTEXT = `You are the autonomous Marketing Executive for SuperSpeech (superspeech.biz), an AI-powered custom speechwriting service run by one person (Nathan).
 
 BUSINESS FACTS:
-- Customers order via the questionnaire, choosing an occasion (weddings, corporate events, milestone celebrations, memorials & tributes), tone and package.
-- Packages: The Toast £9.99 (~2 min), The Main Event £19.99 (~5 min), The Keynote £34.99 (~10 min) - all include free edits.
-- Free tip pages live at superspeech.biz/tips; there is a mailing list, social channels (Facebook, Instagram, Threads, Mastodon, Bluesky, Pinterest), and a Reddit lead listener that emails Nathan drafts.
-- Voice: warm, witty but professional, never salesy-spammy. British English.
+- Customers order via the questionnaire (occasion, tone, package): The Toast £9.99 (~2 min), The Main Event £19.99 (~5 min), The Keynote £34.99 (~10 min) - all include free edits.
+- ALREADY AUTOMATED - never spend today's play on these: SEO tip cards (published Tue+Fri), the newsletter (Sundays 19:00), social card posts (daily 18:00), customer follow-up emails, the Reddit lead listener.
+- Voice: warm, witty, professional. British English.
 
-YOUR JOB: pick the single highest-value marketing action for today. You are FULLY AUTONOMOUS - Nathan does not approve anything; he reads what you did in the nightly digest and gets FYI copies. Act, don't ask - unless you genuinely need a login or a human-only step, then use ask_nathan and follow up another day. Vary it day to day - don't repeat the same action type two days running unless the others make no sense.
+YOUR JOB: invent ONE fresh marketing play every day and execute it yourself. Nathan wants INGENUITY - new strategies, new angles, new channels - not routine work, and not repeats of plays you've already run (check the history). He approves nothing in advance; he reads the report afterwards. If a play needs a human-only step (a login, a web form, a phone call), still run the parts you can and flag what you need.
 
-COLD OUTREACH: You may send ONE real cold email per day - but NEVER a random address. Think like a marketing executive: choose a target with a plausible path to a lead, a sale, or lasting distribution. Good target families:
-- Wedding/event directories couples actually search (listing requests)
-- Wedding vendors for mutual referral - planners, photographers, celebrants, venues with blogs
-- Wedding/event blogs accepting guest posts or tip submissions
-- Podcasts and newsletters about weddings, public speaking, events (guest slots, swaps)
-- Corporate event organisers, funeral celebrants - adjacent professionals who hear "I need a speech"
-Invent a fresh strategy each day - a guest-post pitch one day, a directory listing the next, a cross-promo offer after that. Prefer real, established sites and their published-style contact addresses (hello@, info@, contact@, submissions@). Only give an address you're confident is real - if the domain can't receive mail the send aborts and the draft goes to Nathan. Never email the same address twice.
-Include a "strategy" field (e.g. "directory listing", "cross-promo offer", "guest post pitch") describing the play.`;
+WHAT A PLAY CAN BE - be creative, these are examples not a menu:
+- ONE strategically-targeted cold email (a directory listing, a vendor cross-promo, a guest-post pitch, a press/journalist angle, a podcast ask)
+- A new offer or scheme: referral incentive, seasonal bundle, giveaway mechanic, discount-code campaign for a specific community
+- A press release or media pitch to wedding/event journalists
+- A partnership proposal between SuperSpeech and an adjacent business
+- Signing us up for something via email-based channels
+- Anything else you can execute via one email, or describe concretely enough that Nathan can finish it in two minutes
+
+COLD EMAIL RULES (only when the play involves emailing someone):
+- ONE external email max per day - only fill the email fields if today's play truly needs one
+- Strategic targets only - plausible path to a lead, a sale, or distribution. Never a random address
+- Real, established domains with published-style addresses (hello@, info@, press@, submissions@). If the domain can't accept mail the send aborts and Nathan gets the draft instead
+- Never email the same address twice; no fake familiarity; ONE clear ask; signed "Nathan, superspeech.biz"`;
 
 function daysOld(iso) {
   return (Date.now() - new Date(iso).getTime()) / 86400000;
@@ -59,12 +59,6 @@ async function recentActions(limit = 15) {
 async function actionRanToday(londonDate) {
   const acts = await recentActions(10);
   return acts.some(a => a.date === londonDate && a.type !== 'followup');
-}
-
-async function lastNewsletterDaysAgo() {
-  const acts = await recentActions(30);
-  const last = acts.find(a => a.type === 'newsletter');
-  return last ? daysOld(last.createdAt) : Infinity;
 }
 
 async function alreadyFollowedUp(orderId, email) {
@@ -110,17 +104,6 @@ async function logAction(entry) {
 
 // --- executors ---------------------------------------------------------------
 
-async function execNewsletter(payload) {
-  const subscribers = await subscriberCount();
-  if (!subscribers) return { skipped: 'no subscribers' };
-  const res = await mailingListService.sendCampaign({
-    subject: payload.subject,
-    html: payload.html,
-    text: payload.text
-  });
-  return { sent: res.sent, failed: res.failed, subject: payload.subject };
-}
-
 // A "how did the speech go?" + testimonial nudge to a real customer.
 async function sendFollowupEmail(order) {
   const firstName = (order.name || '').split(' ')[0] || 'there';
@@ -144,7 +127,7 @@ Keep it under 120 words, plain text, personal - like Nathan writing a quick note
 
 async function alreadyEmailedCold(email) {
   const acts = await recentActions(300);
-  return acts.some(a => a.type === 'cold_outreach' && a.targetEmail === email);
+  return acts.some(a => a.targetEmail === email);
 }
 
 // Does this email's domain actually accept mail? Guards against the agent
@@ -186,109 +169,116 @@ async function recordLead({ email, name, subject, body, source, strategy }) {
   return ref.id;
 }
 
-// Cold outreach: ONE real email per day max, to an address the agent picked.
-// Rail: we DNS-check the target domain accepts mail first. If the address
-// looks unverifiable, the draft goes to Nathan to handle instead of sending.
-async function execColdOutreach(payload) {
+// The daily play: whatever strategy the agent invented. If it includes an
+// email, that ONE email goes through the safety rails (real shape, not us,
+// never-contacted, domain accepts mail) then sends - BCC'd to Nathan.
+// If the email can't be sent, the draft goes to Nathan marked "not sent"
+// (reply "Approved" to send it). Non-email plays just get reported.
+async function execDailyPlay(payload) {
+  const out = {
+    playName: payload.playName,
+    summary: payload.summary,
+    strategy: payload.strategy,
+    needsNathan: !!payload.needsNathan,
+    nathanNote: payload.nathanNote
+  };
+
+  const wantsEmail = payload.targetEmail || payload.subject || payload.body;
+  if (!wantsEmail) return out;
+
   const to = String(payload.targetEmail || '').trim().toLowerCase();
+  const complete = payload.subject && payload.body;
   const validShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
   const isSelf = to === (process.env.EMAIL_FROM || 'hello@superspeech.biz').toLowerCase();
 
-  if (validShape && !isSelf && !(await alreadyEmailedCold(to)) && await domainAcceptsMail(to)) {
+  if (complete && validShape && !isSelf
+      && !(await alreadyEmailedCold(to)) && await domainAcceptsMail(to)) {
     await emailService.transporter.sendMail({
       from: `Nathan @ SuperSpeech <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
       to,
-      subject: payload.subject || 'Quick question',
-      text: String(payload.body || ''),
+      subject: payload.subject,
+      text: String(payload.body),
       html: SENT_EMAIL_HTML(payload.body),
-      bcc: AGENT_EMAIL // owner sees every cold send - he asked to be surprised
+      bcc: AGENT_EMAIL // owner sees every send - he asked to be surprised
     });
     await recordLead({
       email: to, name: payload.targetName,
       subject: payload.subject, body: payload.body,
-      source: 'agent-cold-outreach', strategy: payload.strategy
+      source: 'agent-daily-play', strategy: payload.strategy
     });
-    return { emailed: to, subject: payload.subject, cold: true, strategy: payload.strategy };
+    out.emailSent = { to, subject: payload.subject };
+    return out;
   }
 
-  // Fallback: draft to Nathan with the reason it wasn't sent directly
-  const why = !validShape ? 'no valid address supplied'
+  // Couldn't send - keep the draft email so Nathan can "Approved"-reply it
+  const why = !complete ? 'email fields incomplete'
+    : !validShape ? 'no valid address supplied'
     : isSelf ? 'target was our own address'
     : await alreadyEmailedCold(to) ? 'already contacted'
     : 'domain does not accept mail (no MX records)';
-  const html = [
-    `<p><b>Agent note:</b> cold outreach draft - NOT sent automatically (${why}). Reasoning: <i>${payload.reason || ''}</i></p>`,
-    `<p><b>Target:</b> ${payload.targetName || ''} &lt;${to || 'none'}&gt;</p>`,
-    `<hr>`,
-    `<p><b>Subject:</b> ${payload.subject || ''}</p>`,
-    SENT_EMAIL_HTML(payload.body)
-  ].join('');
-  await emailService.transporter.sendMail({
-    from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
-    to: AGENT_EMAIL,
-    subject: `[Marketing Agent] Outreach draft (not sent): ${payload.targetName || 'new target'}`,
-    html
-  });
-  return {
-    draftedFor: payload.targetName, subject: payload.subject, notSent: why,
-    draftTo: to, draftSubject: payload.subject, draftBody: payload.body
-  };
-}
-
-function htmlToText(html) {
-  return String(html || '')
-    .replace(/<\/(p|h1|h2|h3|h4|li|div)>/gi, '\n\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<li>/gi, '- ')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, '\n\n').trim();
-}
-
-// Tip pages publish immediately - the tips index, sitemap, card image and
-// frontend modal all read the `tips` collection, so this is instant. An FYI
-// copy goes to hello@ (no approval needed - he's opted to be surprised).
-async function execPublishTip(payload) {
-  const dupe = await db.collection('tips').where('title', '==', payload.title.trim()).limit(1).get();
-  if (!dupe.empty) throw new Error(`tip "${payload.title}" already exists - pick a different title`);
-  const body = htmlToText(payload.html);
-  await db.collection('tips').add({
-    title: payload.title.trim(),
-    body,
-    published: true,
-    source: 'marketing-agent',
-    createdAt: new Date().toISOString()
-  });
-  const { slugify } = require('../controllers/tipsPageController');
-  const url = `https://superspeech.biz/tips/${slugify(payload.title)}`;
-  await emailService.transporter.sendMail({
-    from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
-    to: AGENT_EMAIL,
-    subject: `[Marketing Agent] Published tip: ${payload.title}`,
-    html: `<p><i>Live now at <a href="${url}">${url}</a> - no action needed, FYI only.</i></p><hr>${payload.html || ''}`
-  });
-  return { publishedTitle: payload.title, url };
+  out.emailNotSent = why;
+  if (complete) {
+    await emailService.transporter.sendMail({
+      from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
+      to: AGENT_EMAIL,
+      subject: `[Marketing Agent] Outreach draft (not sent): ${payload.targetName || 'new target'}`,
+      html: [
+        `<p><b>Agent note:</b> draft NOT sent automatically (${why}). Reply "Approved" to send it.</p>`,
+        `<p><b>Target:</b> ${payload.targetName || ''} &lt;${to}&gt;</p><hr>`,
+        `<p><b>Subject:</b> ${payload.subject}</p>`,
+        SENT_EMAIL_HTML(payload.body)
+      ].join('')
+    });
+    out.draftTo = to; out.draftSubject = payload.subject; out.draftBody = payload.body;
+    out.draftedFor = payload.targetName;
+  }
+  return out;
 }
 
 // When the agent needs something only Nathan can do (a login, a manual
 // signup, a decision), it asks rather than stalling.
 async function execAskNathan(payload) {
-  await emailService.transporter.sendMail({
-    from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
-    to: AGENT_EMAIL,
-    subject: `[Marketing Agent] Needs you: ${payload.title || 'help wanted'}`,
-    html: SENT_EMAIL_HTML(payload.body)
-  });
-  return { askedFor: payload.title };
+  return { askedFor: payload.playName, note: payload.nathanNote };
 }
 
 const EXECUTORS = {
-  newsletter: execNewsletter,
-  cold_outreach: execColdOutreach,
-  publish_tip: execPublishTip,
+  daily_play: execDailyPlay,
   ask_nathan: execAskNathan
 };
+
+// Nathan wants a daily surprise report - this is it. Sent after every run
+// (including rests) so he always knows what his exec did today.
+async function sendDailyReport({ decision, result, followups, error }) {
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const p = t => `<p style="margin:0 0 14px;line-height:1.6;">${t}</p>`;
+  const blocks = [];
+
+  if (error) {
+    blocks.push(p(`<b>Today's play hit a snag:</b> ${esc(error)}`));
+  } else if (decision.action === 'rest') {
+    blocks.push(p(`<b>Today's play:</b> rested - <i>${esc(decision.reason || 'nothing worth doing')}</i>`));
+  } else {
+    blocks.push(p(`<b>Today's play:</b> ${esc(decision.playName || decision.action)}`));
+    if (decision.strategy) blocks.push(p(`<b>Strategy:</b> ${esc(decision.strategy)}`));
+    blocks.push(p(`<b>Why:</b> ${esc(decision.reason)}`));
+    if (decision.summary) blocks.push(p(`<b>The plan:</b> ${esc(decision.summary)}`));
+    if (result?.emailSent) {
+      blocks.push(p(`✅ <b>Email sent to</b> ${esc(result.emailSent.to)} - subject: "${esc(result.emailSent.subject)}" (BCC'd to you)`));
+      if (decision.body) blocks.push(`<div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:12px 16px;border-radius:8px;margin:14px 0;">${SENT_EMAIL_HTML(esc(decision.body))}</div>`);
+    }
+    if (result?.emailNotSent) blocks.push(p(`📋 Email couldn't send (${esc(result.emailNotSent)}) - draft emailed separately, reply "Approved" to send it.`));
+    if (result?.askedFor) blocks.push(p(`🙋 <b>Needs you:</b> ${esc(result.askedFor)}<br>${esc(result.note)}`));
+    if (result?.needsNathan && result?.nathanNote) blocks.push(p(`🙋 <b>Needs you:</b> ${esc(result.nathanNote)}`));
+  }
+  if (followups?.length) blocks.push(p(`📬 Follow-up emails also went to ${followups.length} customer(s).`));
+
+  await emailService.transporter.sendMail({
+    from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
+    to: AGENT_EMAIL,
+    subject: `[Marketing Agent] Today's play: ${decision?.playName || decision?.action || 'none'}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;color:#1e293b;">${blocks.join('')}</div>`
+  });
+}
 
 // --- the daily decision -----------------------------------------------------
 
@@ -301,18 +291,20 @@ function extractJson(text) {
 async function decide(context) {
   const prompt = `${context}
 
-Reply with ONLY a JSON object choosing today's ONE action. Flat shape - put your chosen action's fields at the TOP LEVEL of the object:
+Reply with ONLY a JSON object - flat shape, all fields at the TOP LEVEL:
 {
-  "action": "newsletter" | "cold_outreach" | "publish_tip" | "ask_nathan" | "rest",
-  "reason": "one sentence why this is today's best move"
+  "action": "daily_play" | "ask_nathan" | "rest",
+  "playName": "short catchy name for today's play",
+  "reason": "one sentence why this is today's best move",
+  "summary": "2-3 sentences: what the play is, how it works, expected outcome",
+  "needsNathan": true or false,
+  "nathanNote": "what you need from him if anything (a login, a form, a decision) - omit if nothing"
 }
-Plus these REQUIRED fields depending on the action:
-- newsletter: "subject" (string), "text" (plain-text body <=250 words), "html" (same content as <p> paragraphs, no outer wrapper)
-- cold_outreach: "targetName" (who/org), "targetEmail" (a REAL address - it gets emailed directly; contact@/hello@/info@ style addresses on real, established domains), "strategy" (e.g. "directory listing", "cross-promo offer", "guest post pitch"), "subject", "body" (short, warm, non-spammy email signed "Nathan, superspeech.biz" - honest founder-run framing, ONE clear ask, no fake familiarity)
-- publish_tip: "title" (short punchy title, e.g. "The Toast Test"), "html" (ONE punchy tip, 50-80 words in 1-2 short <p> tags - house style: a clear rule or warning + why it works + one vivid detail, no headings or lists) - publishes LIVE on superspeech.biz/tips immediately
-- ask_nathan: "title" (what you need, e.g. "login for weddingdirectory.co.uk"), "body" (the request explained)
-- rest: no extra fields - only if every option is clearly pointless today
-Pick "rest" sparingly - there's almost always something worth doing. Keep newsletter bodies under 250 words, warm and useful, one soft mention of the service at most.`;
+- daily_play: the fields above, PLUS these ONLY if the play involves sending one real email: "targetName" (org/person), "targetEmail" (a REAL address - it gets emailed directly), "strategy" (e.g. "press pitch", "directory listing", "cross-promo offer", "guest post pitch"), "subject", "body" (short, warm, non-spammy, signed "Nathan, superspeech.biz", ONE clear ask)
+- ask_nathan: "playName" = what you're trying to do, "nathanNote" = exactly what you need from him
+- rest: only if genuinely nothing is worth doing today
+
+Surprise Nathan - invent strategies he hasn't thought of. Repeating yesterday's play is failure.`;
 
   const raw = await aiService.generateSocialCopy(prompt, { maxTokens: 1600, temperature: 0.8 });
   const parsed = extractJson(raw);
@@ -323,34 +315,33 @@ Pick "rest" sparingly - there's almost always something worth doing. Keep newsle
 // Does a decision carry the fields its executor needs?
 function payloadMissing(d) {
   const need = {
-    newsletter: ['subject', 'text', 'html'],
-    cold_outreach: ['targetName', 'targetEmail', 'subject', 'body', 'strategy'],
-    publish_tip: ['title', 'html'],
-    ask_nathan: ['title', 'body'],
+    daily_play: ['playName', 'reason', 'summary'],
+    ask_nathan: ['playName', 'nathanNote'],
     rest: []
   }[d.action] || ['__unknown_action__'];
   return need.filter(k => !d[k]);
 }
 
 async function buildContext() {
-  const [acts, subs, candidates, newsletterGap, tipSnap] = await Promise.all([
-    recentActions(15), subscriberCount(), followupCandidates(), lastNewsletterDaysAgo(),
-    db.collection('tips').get().catch(() => null)
+  const [acts, subs, leadsSnap, redditSnap] = await Promise.all([
+    recentActions(15), subscriberCount(),
+    db.collection('marketingLeads').get().catch(() => null),
+    db.collection('redditLeads').orderBy('createdAt', 'desc').limit(20).get().catch(() => null)
   ]);
-  const tipTitles = tipSnap ? tipSnap.docs.map(d => d.data().title).filter(Boolean) : [];
+  const leads = leadsSnap ? leadsSnap.size : 0;
+  const leadsReplied = leadsSnap ? leadsSnap.docs.filter(d => d.data().status === 'replied').length : 0;
+  const recentLeads = redditSnap ? redditSnap.size : 0;
   const history = acts.length
     ? acts.map(a => `- ${a.date} [${a.type}] ${a.title || a.summary || ''}`).join('\n')
     : 'No marketing actions recorded yet - this is day one.';
-  return `HISTORY (most recent first):
+  return `HISTORY (most recent first - do NOT repeat these plays):
 ${history}
 
 CURRENT STATE:
 - Mailing-list subscribers: ${subs}
-- Days since last newsletter: ${newsletterGap === Infinity ? 'never sent' : Math.floor(newsletterGap)}
-- Customers eligible for follow-up (handled automatically, don't pick this): ${candidates.length}
-- Newsletter cooldown: needs >= ${NEWSLETTER_MIN_GAP_DAYS} days between sends${newsletterGap < NEWSLETTER_MIN_GAP_DAYS ? ' - DO NOT pick newsletter today' : ''}
-- Existing published tip titles (publish_tip must NOT repeat these):
-${tipTitles.map(t => `  * ${t}`).join('\n') || '  (none yet)'}`;
+- Outreach leads contacted: ${leads} (${leadsReplied} replied)
+- Reddit leads found recently: ${recentLeads}
+- Customers eligible for follow-up (handled automatically, never today's play): handled separately`;
 }
 
 // --- public entry ------------------------------------------------------------
@@ -393,12 +384,13 @@ async function runDaily({ force = false } = {}) {
 
   const missing = decision && EXECUTORS[decision.action] ? payloadMissing(decision) : [];
   if (!decision || !EXECUTORS[decision.action] || missing.length) {
-    // AI failed, picked rest, or skipped required fields - log it and move on
+    // AI failed, picked rest, or skipped required fields - log + report
     const why = !decision ? 'decision parse failed'
       : !EXECUTORS[decision.action] && decision.action !== 'rest' ? `unknown action "${decision.action}"`
       : decision.action === 'rest' ? `rested: ${decision.reason || ''}`
       : `missing fields: ${missing.join(', ')}`;
     await logAction({ type: 'rest', title: why, summary: decision?.reason || 'Claude returned no usable decision' });
+    await sendDailyReport({ decision: decision || { action: 'rest', reason: why }, followups }).catch(e => console.warn('[Marketing] report failed:', e.message));
     return { action: 'rest', reason: decision?.reason || why, followups };
   }
 
@@ -407,19 +399,21 @@ async function runDaily({ force = false } = {}) {
     result = await EXECUTORS[decision.action](decision);
   } catch (e) {
     console.error('[Marketing] executor failed:', decision.action, e.message);
-    await logAction({ type: decision.action, title: 'Action failed', summary: e.message, emailSent: false });
+    await logAction({ type: decision.action, title: decision.playName || 'Action failed', summary: e.message, emailSent: false });
+    await sendDailyReport({ decision, error: e.message, followups }).catch(() => {});
     return { action: decision.action, error: e.message, followups };
   }
 
   await logAction({
     type: decision.action,
-    title: result.subject || result.draftTitle || decision.action,
+    title: decision.playName || decision.action,
     summary: decision.reason,
-    detail: result,
-    targetEmail: result.emailed,
-    emailSent: true
+    detail: { ...result, summary: decision.summary, strategy: decision.strategy },
+    targetEmail: result.emailSent?.to,
+    emailSent: !!result.emailSent
   });
-  console.log(`[Marketing] daily action: ${decision.action} - ${decision.reason}`);
+  await sendDailyReport({ decision, result, followups }).catch(e => console.warn('[Marketing] report failed:', e.message));
+  console.log(`[Marketing] daily play: ${decision.playName || decision.action} - ${decision.reason}`);
   return { action: decision.action, reason: decision.reason, result, followups };
 }
 

@@ -83,7 +83,8 @@ async function tryHandleApproval({ from, subject, text }) {
     const acts = await db.collection('marketingActions').orderBy('createdAt', 'desc').limit(30).get();
     const act = acts.docs.find(d => {
       const x = d.data();
-      return x.type === 'cold_outreach' && x.detail?.notSent && x.detail?.draftTo
+      return (x.type === 'cold_outreach' || x.type === 'daily_play')
+        && (x.detail?.notSent || x.detail?.emailNotSent) && x.detail?.draftTo
         && (x.detail?.draftedFor || '').toLowerCase() === name.toLowerCase();
     });
     if (!act) {
