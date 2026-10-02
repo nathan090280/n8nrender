@@ -238,6 +238,25 @@ function marketingSection(actions) {
   return `<h3>Marketing agent</h3><ul>${items}</ul>`;
 }
 
+// Ideas the agent generates FOR Nathan - human-side moves only he can do.
+async function recentIdeas(limit = 5) {
+  try {
+    const snap = await db.collection('marketingIdeas')
+      .orderBy('createdAt', 'desc').limit(limit).get();
+    return snap.docs.map(d => d.data());
+  } catch { return []; }
+}
+
+function ideasSection(ideas) {
+  if (!ideas.length) return '';
+  const items = ideas.map(i => `
+    <li style="margin-bottom:12px;"><b>${i.title}</b>
+      <div style="color:#64748b;font-size:13px;">${i.why || ''} · <i>${i.effort || ''}</i> effort · ${i.impact || ''}</div>
+      ${(i.steps || []).length ? `<ol style="margin:6px 0 0;padding-left:20px;font-size:13px;">${i.steps.map(s => `<li>${s}</li>`).join('')}</ol>` : ''}
+    </li>`).join('');
+  return `<h3>💡 Ideas for you</h3><ul style="padding-left:20px;">${items}</ul>`;
+}
+
 async function collectAndSend() {
   const posts = await todaysPosts();
   const fbIds = posts.map(p => p.results?.facebook?.id).filter(Boolean);
@@ -253,6 +272,7 @@ async function collectAndSend() {
     siteAndBusiness().catch(e => ({ error: e.message }))
   ]);
   const marketing = await todaysMarketing();
+  const ideas = await recentIdeas();
 
   const postedHtml = posts.length
     ? posts.map(p => `<li><b>${p.concept || 'post'}</b> <span style="color:#64748b;">(${p.category || ''})</span></li>`).join('')
@@ -274,6 +294,7 @@ ${row('Pinterest', pin)}
 </table>
 ${siteTable(site)}
 ${marketingSection(marketing)}
+${ideasSection(ideas)}
 <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Sent automatically by the SuperSpeech social engine. Gaps mean the platform API didn't expose the metric (often missing scopes) - not necessarily zero.</p>
 </body></html>`;
 

@@ -1,4 +1,6 @@
 const dns = require('dns').promises;
+const vm = require('vm');
+const axios = require('axios');
 const { db } = require('../config/firebase');
 const aiService = require('./aiService');
 const emailService = require('./emailService');
@@ -32,11 +34,11 @@ HARD LIMIT: you can NEVER change the website, its structure, the backend, pricin
 
 WHAT A PLAY CAN BE - be creative, these are examples not a menu:
 - ONE strategically-targeted cold email (a directory listing, a vendor cross-promo, a guest-post pitch, a press/journalist angle, a podcast ask)
-- A new offer or scheme: referral incentive, seasonal bundle, giveaway mechanic, discount-code campaign for a specific community
-- A press release or media pitch to wedding/event journalists
-- A partnership proposal between SuperSpeech and an adjacent business
-- Signing us up for something via email-based channels
-- Anything else you can execute via one email, or describe concretely enough that Nathan can finish it in two minutes
+- Signing us up to something via email (directory listings, communities, newsletters - we own hello@superspeech.biz, sign-up confirmations land in our inbox)
+- RESEARCHING a real page first (researchUrl below) - e.g. fetch a directory's contact page and extract the REAL email instead of guessing
+- Running a small script of your own (script field) - pure computation only: parsing text, extracting emails from a fetched page, crunching numbers, formatting output. NO network, NO filesystem, keep it tiny - it's a scalpel not a bulldozer
+- A new offer or scheme, a press release, a partnership proposal - anything describable
+- Anything else you can execute via one email, a page fetch, a small script, or describe concretely enough that Nathan can finish it in two minutes
 
 COLD EMAIL RULES (only when the play involves emailing someone):
 - ONE external email max per day - only fill the email fields if today's play truly needs one
@@ -176,7 +178,7 @@ async function recordLead({ email, name, subject, body, source, strategy }) {
 // never-contacted, domain accepts mail) then sends - BCC'd to Nathan.
 // If the email can't be sent, the draft goes to Nathan marked "not sent"
 // (reply "Approved" to send it). Non-email plays just get reported.
-async function execDailyPlay(payload) {
+async function execDailyPlay(payload, pageText) {
   const out = {
     playName: payload.playName,
     summary: payload.summary,
@@ -184,6 +186,15 @@ async function execDailyPlay(payload) {
     needsNathan: !!payload.needsNathan,
     nathanNote: payload.nathanNote
   };
+
+  // The agent's own script - tiny sandboxed compute. Input defaults to the
+  // researched page text if it fetched one.
+  if (payload.script) {
+    const input = payload.scriptInput !== undefined ? payload.scriptInput : (pageText || null);
+    const r = runAgentScript(String(payload.script).slice(0, 4000), input);
+    out.scriptResult = r.result !== undefined ? r.result : r.error;
+    if (r.log?.length) out.scriptLog = r.log;
+  }
 
   const wantsEmail = payload.targetEmail || payload.subject || payload.body;
   if (!wantsEmail) return out;
@@ -248,6 +259,73 @@ const EXECUTORS = {
   ask_nathan: execAskNathan
 };
 
+// --- agent tools: page research + sandboxed script ---------------------------
+
+// Fetch a real page so the agent can RESEARCH instead of guessing (e.g. pull
+// the actual contact email off a directory's contact page). Bounded: http(s)
+// only, no private hosts, 15s, ~8k chars of stripped text.
+async function fetchResearchPage(url) {
+  try {
+    const u = new URL(String(url));
+    if (!/^https?:$/.test(u.protocol)) return null;
+    if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|::1|\[::1\])/.test(u.hostname)) return null;
+    const res = await axios.get(u.toString(), {
+      timeout: 15000,
+      maxContentLength: 512 * 1024,
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SuperSpeechBot/1.0)' },
+      maxRedirects: 3
+    });
+    const text = String(res.data || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 8000);
+    return text || null;
+  } catch (e) {
+    console.warn('[Marketing] research fetch failed:', String(url).slice(0, 100), e.message);
+    return null;
+  }
+}
+
+// The agent's own little scripts: pure computation in a vm sandbox. No
+// network, no fs, no require - input in, result out, 3s fuse. For things
+// like extracting emails from a fetched page or crunching text.
+function runAgentScript(code, input) {
+  try {
+    const sandbox = { input, result: null, log: [] };
+    sandbox.console = { log: (...a) => sandbox.log.push(a.map(String).join(' ')) };
+    vm.createContext(sandbox);
+    vm.runInContext(
+      `result = (function(input){ ${code} })(input)`,
+      sandbox, { timeout: 3000 });
+    return { result: sandbox.result, log: sandbox.log.slice(0, 20) };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+// Second pass: after fetching a research page, let the agent refine its play
+// with REAL data (e.g. swap a guessed address for the one actually on the page).
+async function refineWithResearch(context, draft, pageText) {
+  const raw = await aiService.generateSocialCopy(
+    `${context}
+
+You drafted this play:
+${JSON.stringify(draft, null, 1)}
+
+Here is the actual text of the page you asked to research:
+---
+${pageText}
+---
+
+Return the FINAL play as a JSON object - same fields as before. Use REAL facts from the page (a real email address beats a guessed one; if the page shows no usable contact, change the plan or drop the email). If the page was useless, say so in "summary" and adjust.`,
+    { maxTokens: 1600, temperature: 0.7 });
+  return extractJson(raw);
+}
+
 // Nathan wants a daily surprise report - this is it. Sent after every run
 // (including rests) so he always knows what his exec did today.
 async function sendDailyReport({ decision, result, followups, error }) {
@@ -264,6 +342,8 @@ async function sendDailyReport({ decision, result, followups, error }) {
     if (decision.strategy) blocks.push(p(`<b>Strategy:</b> ${esc(decision.strategy)}`));
     blocks.push(p(`<b>Why:</b> ${esc(decision.reason)}`));
     if (decision.summary) blocks.push(p(`<b>The plan:</b> ${esc(decision.summary)}`));
+    if (decision.researchUrl) blocks.push(p(`🔍 <b>Researched:</b> ${esc(decision.researchUrl)}`));
+    if (result?.scriptResult !== undefined) blocks.push(`<div style="background:#f8fafc;border:1px solid #e2e8f0;padding:12px 16px;border-radius:8px;margin:14px 0;font-family:monospace;font-size:12px;white-space:pre-wrap;">${esc(JSON.stringify(result.scriptResult, null, 1)).slice(0, 1500)}</div>`);
     if (result?.emailSent) {
       blocks.push(p(`✅ <b>Email sent to</b> ${esc(result.emailSent.to)} - subject: "${esc(result.emailSent.subject)}" (BCC'd to you)`));
       if (decision.body) blocks.push(`<div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:12px 16px;border-radius:8px;margin:14px 0;">${SENT_EMAIL_HTML(esc(decision.body))}</div>`);
@@ -302,7 +382,10 @@ Reply with ONLY a JSON object - flat shape, all fields at the TOP LEVEL:
   "needsNathan": true or false,
   "nathanNote": "what you need from him if anything (a login, a form, a decision) - omit if nothing"
 }
-- daily_play: the fields above, PLUS these ONLY if the play involves sending one real email: "targetName" (org/person), "targetEmail" (a REAL address - it gets emailed directly), "strategy" (e.g. "press pitch", "directory listing", "cross-promo offer", "guest post pitch"), "subject", "body" (short, warm, non-spammy, signed "Nathan, superspeech.biz", ONE clear ask)
+- daily_play: the fields above, PLUS any of these optional tools:
+  * "researchUrl" - a real page to fetch BEFORE finalising (contact pages, directory listings, anything you want facts from). You'll get the page text and one chance to refine your play with it
+  * "script" - a small JS function body, gets {input} (include "scriptInput" if needed, e.g. the fetched page text), returns its result via a return statement. Pure compute only
+  * IF the play involves sending one real email: "targetName" (org/person), "targetEmail" (a REAL address - it gets emailed directly), "strategy" (e.g. "press pitch", "directory listing", "cross-promo offer", "guest post pitch"), "subject", "body" (short, warm, non-spammy, signed "Nathan, superspeech.biz", ONE clear ask)
 - ask_nathan: "playName" = what you're trying to do, "nathanNote" = exactly what you need from him
 - rest: only if genuinely nothing is worth doing today
 
@@ -325,10 +408,11 @@ function payloadMissing(d) {
 }
 
 async function buildContext() {
-  const [acts, subs, leadsSnap, redditSnap] = await Promise.all([
+  const [acts, subs, leadsSnap, redditSnap, ideasSnap] = await Promise.all([
     recentActions(15), subscriberCount(),
     db.collection('marketingLeads').get().catch(() => null),
-    db.collection('redditLeads').orderBy('createdAt', 'desc').limit(20).get().catch(() => null)
+    db.collection('redditLeads').orderBy('createdAt', 'desc').limit(20).get().catch(() => null),
+    db.collection('marketingIdeas').orderBy('createdAt', 'desc').limit(10).get().catch(() => null)
   ]);
   const leads = leadsSnap ? leadsSnap.size : 0;
   const leadsReplied = leadsSnap ? leadsSnap.docs.filter(d => d.data().status === 'replied').length : 0;
@@ -343,7 +427,29 @@ CURRENT STATE:
 - Mailing-list subscribers: ${subs}
 - Outreach leads contacted: ${leads} (${leadsReplied} replied)
 - Reddit leads found recently: ${recentLeads}
-- Customers eligible for follow-up (handled automatically, never today's play): handled separately`;
+- Customers eligible for follow-up (handled automatically, never today's play): handled separately
+
+IDEAS ALREADY GIVEN TO NATHAN (never repeat these):
+${ideasSnap ? ideasSnap.docs.map(d => `  * ${d.data().title}`).join('\n') || '  (none yet)' : '  (none yet)'}`;
+}
+
+// --- daily idea for Nathan ---------------------------------------------------
+// Separate from the autonomous play: one concrete "you do this" idea per day,
+// collected in marketingIdeas and surfaced on the nightly digest.
+async function generateIdeaForNathan(context) {
+  const raw = await aiService.generateSocialCopy(
+    `${context}
+
+Separately from your autonomous play, invent ONE marketing idea FOR NATHAN to do himself - something needing a human hand (create an account, fill a form, record a video, send a message from his own profile). Specific and actionable, 2-4 steps max. Never repeat an idea from the ideas history.
+
+Reply with ONLY JSON: { "title": "...", "why": "one sentence - the payoff", "steps": ["step 1", "step 2"], "effort": "e.g. 10 minutes", "impact": "e.g. long-tail search traffic" }`,
+    { maxTokens: 600, temperature: 0.9 });
+  const idea = extractJson(raw);
+  if (!idea?.title) return null;
+  await db.collection('marketingIdeas').add({
+    ...idea, status: 'new', date: londonNow().date, createdAt: new Date().toISOString()
+  });
+  return idea;
 }
 
 // --- public entry ------------------------------------------------------------
@@ -380,9 +486,24 @@ async function runDaily({ force = false } = {}) {
   }
 
   const context = await buildContext();
-  let decision;
-  try { decision = await decide(context); }
-  catch (e) { console.error('[Marketing] decision call failed:', e.message); }
+  // Two events every day: an autonomous play AND an idea for Nathan.
+  const [decision, idea] = await Promise.all([
+    decide(context).catch(e => { console.error('[Marketing] decision call failed:', e.message); return null; }),
+    generateIdeaForNathan(context).catch(e => { console.warn('[Marketing] idea generation failed:', e.message); return null; })
+  ]);
+
+  // Research pass: if it asked for a page, fetch it and let it refine the
+  // play with real data (real contact addresses beat guessed ones).
+  let pageText = null;
+  if (decision?.researchUrl) {
+    pageText = await fetchResearchPage(decision.researchUrl);
+    if (pageText) {
+      try {
+        const refined = await refineWithResearch(context, decision, pageText);
+        if (refined && EXECUTORS[refined.action]) decision = refined;
+      } catch (e) { console.warn('[Marketing] refine pass failed:', e.message); }
+    }
+  }
 
   const missing = decision && EXECUTORS[decision.action] ? payloadMissing(decision) : [];
   if (!decision || !EXECUTORS[decision.action] || missing.length) {
@@ -393,17 +514,17 @@ async function runDaily({ force = false } = {}) {
       : `missing fields: ${missing.join(', ')}`;
     await logAction({ type: 'rest', title: why, summary: decision?.reason || 'Claude returned no usable decision' });
     await sendDailyReport({ decision: decision || { action: 'rest', reason: why }, followups }).catch(e => console.warn('[Marketing] report failed:', e.message));
-    return { action: 'rest', reason: decision?.reason || why, followups };
+    return { action: 'rest', reason: decision?.reason || why, followups, idea };
   }
 
   let result;
   try {
-    result = await EXECUTORS[decision.action](decision);
+    result = await EXECUTORS[decision.action](decision, pageText);
   } catch (e) {
     console.error('[Marketing] executor failed:', decision.action, e.message);
     await logAction({ type: decision.action, title: decision.playName || 'Action failed', summary: e.message, emailSent: false });
     await sendDailyReport({ decision, error: e.message, followups }).catch(() => {});
-    return { action: decision.action, error: e.message, followups };
+    return { action: decision.action, error: e.message, followups, idea };
   }
 
   await logAction({
@@ -415,8 +536,8 @@ async function runDaily({ force = false } = {}) {
     emailSent: !!result.emailSent
   });
   await sendDailyReport({ decision, result, followups }).catch(e => console.warn('[Marketing] report failed:', e.message));
-  console.log(`[Marketing] daily play: ${decision.playName || decision.action} - ${decision.reason}`);
-  return { action: decision.action, reason: decision.reason, result, followups };
+  console.log(`[Marketing] daily play: ${decision.playName || decision.action} - ${decision.reason}${idea ? ` | idea for Nathan: ${idea.title}` : ''}`);
+  return { action: decision.action, reason: decision.reason, result, followups, idea };
 }
 
 module.exports = { runDaily, runFollowupSweep, recordLead };
