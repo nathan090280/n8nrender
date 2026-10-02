@@ -32,7 +32,7 @@ router.post('/social-digest', async (req, res) => {
 router.post('/marketing-run', async (req, res) => {
   try {
     const agent = require('../services/marketingAgentService');
-    res.json({ success: true, ...(await agent.runDaily()) });
+    res.json({ success: true, ...(await agent.runDaily({ force: req.query.force === '1' })) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }

@@ -182,19 +182,33 @@ function extractJson(text) {
 async function decide(context) {
   const prompt = `${context}
 
-Reply with ONLY a JSON object choosing today's ONE action:
+Reply with ONLY a JSON object choosing today's ONE action. Flat shape - put your chosen action's fields at the TOP LEVEL of the object:
 {
   "action": "newsletter" | "outreach_draft" | "tip_draft" | "rest",
-  "reason": "one sentence why this is today's best move",
-  // newsletter: { "subject": "...", "text": "plain text body", "html": "<p>..</p> short html body, no outer wrapper" }
-  // outreach_draft: { "targetType": "e.g. UK wedding directories", "subject": "...", "body": "email text Nathan would send" }
-  // tip_draft: { "title": "page title like 'Groom Speech: 7 Lines That Always Land'", "html": "<h2>/<p> article body, genuinely useful, 400-600 words" }
-  // rest: only if every option is clearly pointless today
+  "reason": "one sentence why this is today's best move"
 }
+Plus these REQUIRED fields depending on the action:
+- newsletter: "subject" (string), "text" (plain-text body <=250 words), "html" (same content as <p> paragraphs, no outer wrapper)
+- outreach_draft: "targetType" (e.g. "UK wedding directories"), "subject", "body" (email text Nathan would send)
+- tip_draft: "title" (e.g. "Groom Speech: 7 Lines That Always Land"), "html" (useful article body, <h2>/<p>, 400-600 words)
+- rest: no extra fields - only if every option is clearly pointless today
 Pick "rest" sparingly - there's almost always something worth doing. Keep newsletter bodies under 250 words, warm and useful, one soft mention of the service at most.`;
 
   const raw = await aiService.generateSocialCopy(prompt, { maxTokens: 1600, temperature: 0.8 });
-  return extractJson(raw);
+  const parsed = extractJson(raw);
+  if (!parsed) console.warn('[Marketing] decision parse failed, raw:', String(raw).slice(0, 500));
+  return parsed;
+}
+
+// Does a decision carry the fields its executor needs?
+function payloadMissing(d) {
+  const need = {
+    newsletter: ['subject', 'text', 'html'],
+    outreach_draft: ['targetType', 'subject', 'body'],
+    tip_draft: ['title', 'html'],
+    rest: []
+  }[d.action] || ['__unknown_action__'];
+  return need.filter(k => !d[k]);
 }
 
 async function buildContext() {
@@ -237,13 +251,13 @@ async function runFollowupSweep() {
   return done;
 }
 
-async function runDaily() {
+async function runDaily({ force = false } = {}) {
   const now = londonNow();
 
   // Follow-ups first - they run alongside, not instead of, the daily action.
   const followups = await runFollowupSweep();
 
-  if (await actionRanToday(now.date)) {
+  if (!force && await actionRanToday(now.date)) {
     return { skipped: 'already acted today', followups };
   }
 
@@ -252,14 +266,15 @@ async function runDaily() {
   try { decision = await decide(context); }
   catch (e) { console.error('[Marketing] decision call failed:', e.message); }
 
-  if (!decision || !EXECUTORS[decision.action]) {
-    // AI failed or picked rest - log and move on rather than forcing it
-    await logAction({
-      type: 'rest',
-      title: decision?.action === 'rest' ? `Rested: ${decision.reason}` : 'No action (decision parse failed)',
-      summary: decision?.reason || 'Claude returned no usable decision'
-    });
-    return { action: 'rest', reason: decision?.reason, followups };
+  const missing = decision && EXECUTORS[decision.action] ? payloadMissing(decision) : [];
+  if (!decision || !EXECUTORS[decision.action] || missing.length) {
+    // AI failed, picked rest, or skipped required fields - log it and move on
+    const why = !decision ? 'decision parse failed'
+      : !EXECUTORS[decision.action] && decision.action !== 'rest' ? `unknown action "${decision.action}"`
+      : decision.action === 'rest' ? `rested: ${decision.reason || ''}`
+      : `missing fields: ${missing.join(', ')}`;
+    await logAction({ type: 'rest', title: why, summary: decision?.reason || 'Claude returned no usable decision' });
+    return { action: 'rest', reason: decision?.reason || why, followups };
   }
 
   let result;
