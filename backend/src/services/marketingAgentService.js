@@ -417,6 +417,10 @@ async function buildContext() {
   const leads = leadsSnap ? leadsSnap.size : 0;
   const leadsReplied = leadsSnap ? leadsSnap.docs.filter(d => d.data().status === 'replied').length : 0;
   const recentLeads = redditSnap ? redditSnap.size : 0;
+  const leadList = redditSnap ? redditSnap.docs.slice(0, 6).map(d => {
+    const l = d.data();
+    return `  * r/${l.subreddit}: "${String(l.title || '').slice(0, 90)}" by u/${l.author} - ${l.url}`;
+  }).join('\n') : '';
   const history = acts.length
     ? acts.map(a => `- ${a.date} [${a.type}] ${a.title || a.summary || ''}`).join('\n')
     : 'No marketing actions recorded yet - this is day one.';
@@ -427,6 +431,7 @@ CURRENT STATE:
 - Mailing-list subscribers: ${subs}
 - Outreach leads contacted: ${leads} (${leadsReplied} replied)
 - Reddit leads found recently: ${recentLeads}
+${leadList}
 - Customers eligible for follow-up (handled automatically, never today's play): handled separately
 
 IDEAS ALREADY GIVEN TO NATHAN (never repeat these):
