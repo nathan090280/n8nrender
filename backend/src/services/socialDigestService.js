@@ -219,6 +219,25 @@ ${singleRow('Published tips', m.publishedTips)}
 </table>`;
 }
 
+// Today's Marketing Executive actions (daily pick + follow-ups).
+async function todaysMarketing() {
+  try {
+    const snap = await db.collection('marketingActions')
+      .orderBy('createdAt', 'desc').limit(10).get();
+    return snap.docs.map(d => d.data()).filter(a => isTodayLondon(a.createdAt));
+  } catch { return []; }
+}
+
+function marketingSection(actions) {
+  if (!actions.length) {
+    return `<h3>Marketing agent</h3><p style="color:#64748b;">No actions today</p>`;
+  }
+  const items = actions.map(a =>
+    `<li><b>[${a.type}]</b> ${a.title || a.summary || ''}${a.targetEmail ? ` <span style="color:#64748b;">&rarr; ${a.targetEmail}</span>` : ''}</li>`
+  ).join('');
+  return `<h3>Marketing agent</h3><ul>${items}</ul>`;
+}
+
 async function collectAndSend() {
   const posts = await todaysPosts();
   const fbIds = posts.map(p => p.results?.facebook?.id).filter(Boolean);
@@ -233,6 +252,7 @@ async function collectAndSend() {
     pinterestMetrics().catch(e => ({ error: e.response?.data?.message || e.message })),
     siteAndBusiness().catch(e => ({ error: e.message }))
   ]);
+  const marketing = await todaysMarketing();
 
   const postedHtml = posts.length
     ? posts.map(p => `<li><b>${p.concept || 'post'}</b> <span style="color:#64748b;">(${p.category || ''})</span></li>`).join('')
@@ -253,6 +273,7 @@ ${row('Bluesky', bsky)}
 ${row('Pinterest', pin)}
 </table>
 ${siteTable(site)}
+${marketingSection(marketing)}
 <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Sent automatically by the SuperSpeech social engine. Gaps mean the platform API didn't expose the metric (often missing scopes) - not necessarily zero.</p>
 </body></html>`;
 

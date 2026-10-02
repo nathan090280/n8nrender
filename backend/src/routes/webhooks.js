@@ -28,6 +28,16 @@ router.post('/social-digest', async (req, res) => {
   }
 });
 
+// On-demand marketing-agent run (the 11:30 UK daily job calls this internally)
+router.post('/marketing-run', async (req, res) => {
+  try {
+    const agent = require('../services/marketingAgentService');
+    res.json({ success: true, ...(await agent.runDaily()) });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 router.get('/tips', webhookController.handleGetTips);
 
 router.post('/test', webhookController.handleTestWebhook);

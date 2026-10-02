@@ -16,6 +16,9 @@ const { londonNow } = require('../utils/londonTime');
 const POST_HOUR = parseInt(process.env.SOCIAL_POST_HOUR || '18', 10);
 const DIGEST_HOUR = parseInt(process.env.SOCIAL_DIGEST_HOUR || '21', 10);
 const DIGEST_MINUTE = parseInt(process.env.SOCIAL_DIGEST_MINUTE || '30', 10);
+// Marketing Executive: one autonomous action per day, daytime slot.
+const MARKETING_HOUR = parseInt(process.env.MARKETING_HOUR || '11', 10);
+const MARKETING_MINUTE = parseInt(process.env.MARKETING_MINUTE || '30', 10);
 const TICK_MS = 60 * 1000;
 
 // Full pipeline: guide -> Claude -> card -> publish -> Firestore record.
@@ -96,6 +99,13 @@ async function alreadySentDigestToday(londonDate) {
   } catch { return false; }
 }
 
+async function alreadyMarketedToday(londonDate) {
+  try {
+    const doc = await db.collection('marketingLog').doc(londonDate).get();
+    return doc.exists;
+  } catch { return false; }
+}
+
 async function tick() {
   const now = londonNow();
 
@@ -103,6 +113,20 @@ async function tick() {
   if (now.hour === DIGEST_HOUR && now.minute === DIGEST_MINUTE) {
     socialPostService.trackThreadsToken().catch(() => {});
     socialPostService.refreshPinterestTokenIfNeeded().catch(() => {});
+  }
+
+  // Marketing Executive daily action at 11:30 UK (default) - follow-up
+  // sweep runs inside it and doesn't count against the one-a-day.
+  if (now.hour === MARKETING_HOUR && now.minute >= MARKETING_MINUTE && !(await alreadyMarketedToday(now.date))) {
+    try {
+      const agent = require('./marketingAgentService');
+      const result = await agent.runDaily();
+      await db.collection('marketingLog').doc(now.date).set({ ranAt: new Date().toISOString(), result });
+      console.log(`[Marketing] Daily run done: ${result.action || 'none'}`);
+    } catch (e) {
+      console.error('[Marketing] Daily run failed:', e.message);
+    }
+    return;
   }
 
   // Nightly digest email at 21:30 UK
@@ -133,7 +157,7 @@ async function tick() {
 }
 
 function start() {
-  console.log(`[Social] Daily poster armed - posts at ${POST_HOUR}:00, digest at ${DIGEST_HOUR}:${String(DIGEST_MINUTE).padStart(2, '0')} Europe/London`);
+  console.log(`[Social] Daily poster armed - posts at ${POST_HOUR}:00, digest at ${DIGEST_HOUR}:${String(DIGEST_MINUTE).padStart(2, '0')}, marketing agent at ${MARKETING_HOUR}:${String(MARKETING_MINUTE).padStart(2, '0')} Europe/London`);
   setInterval(tick, TICK_MS);
   tick(); // covers the case where the server boots inside the posting hour
 }
