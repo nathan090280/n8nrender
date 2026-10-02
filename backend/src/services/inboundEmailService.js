@@ -31,7 +31,7 @@ function senderEmail(from) {
 }
 
 function isApprover(from) {
-  const allow = (process.env.APPROVER_EMAILS || 'nathan090280@yahoo.co.uk')
+  const allow = (process.env.APPROVER_EMAILS || 'nathan090280@yahoo.co.uk,hello@superspeech.biz')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   return allow.includes(senderEmail(from));
 }
