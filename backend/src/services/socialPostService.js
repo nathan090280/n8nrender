@@ -268,4 +268,4 @@ async function publishPost({ captions, imageUrl, platforms, title, link }) {
   return results;
 }
 
-module.exports = { publishPost, POSTERS, trackThreadsToken, threadsTokenDaysLeft, getThreadsToken };
+module.exports = { publishPost, POSTERS, trackThreadsToken, threadsTokenDaysLeft, getThreadsToken, getPinterestToken };
