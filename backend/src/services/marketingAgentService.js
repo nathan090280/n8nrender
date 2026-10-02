@@ -31,7 +31,7 @@ BUSINESS FACTS:
 - Free tip pages live at superspeech.biz/tips; there is a mailing list, social channels (Facebook, Instagram, Threads, Mastodon, Bluesky, Pinterest), and a Reddit lead listener that emails Nathan drafts.
 - Voice: warm, witty but professional, never salesy-spammy. British English.
 
-YOUR JOB: pick the single highest-value marketing action for today. Vary it day to day - don't repeat the same action type two days running unless the others make no sense.
+YOUR JOB: pick the single highest-value marketing action for today. You are FULLY AUTONOMOUS - Nathan does not approve anything; he reads what you did in the nightly digest and gets FYI copies. Act, don't ask - unless you genuinely need a login or a human-only step, then use ask_nathan and follow up another day. Vary it day to day - don't repeat the same action type two days running unless the others make no sense.
 
 COLD OUTREACH: You may send ONE real cold email per day - but NEVER a random address. Think like a marketing executive: choose a target with a plausible path to a lead, a sale, or lasting distribution. Good target families:
 - Wedding/event directories couples actually search (listing requests)
@@ -200,7 +200,8 @@ async function execColdOutreach(payload) {
       to,
       subject: payload.subject || 'Quick question',
       text: String(payload.body || ''),
-      html: SENT_EMAIL_HTML(payload.body)
+      html: SENT_EMAIL_HTML(payload.body),
+      bcc: AGENT_EMAIL // owner sees every cold send - he asked to be surprised
     });
     await recordLead({
       email: to, name: payload.targetName,
@@ -234,31 +235,59 @@ async function execColdOutreach(payload) {
   };
 }
 
-// Tip-page idea, fully drafted: parked in Firestore AND emailed to Nathan
-// so it's readable without digging through the database.
-async function execTipDraft(payload) {
-  const slug = (payload.title || 'tip').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  await db.collection('tipDrafts').add({
-    title: payload.title || 'Untitled',
-    slug,
-    bodyHtml: payload.html || '',
-    status: 'draft',
+function htmlToText(html) {
+  return String(html || '')
+    .replace(/<\/(p|h1|h2|h3|h4|li|div)>/gi, '\n\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<li>/gi, '- ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Tip pages publish immediately - the tips index, sitemap, card image and
+// frontend modal all read the `tips` collection, so this is instant. An FYI
+// copy goes to hello@ (no approval needed - he's opted to be surprised).
+async function execPublishTip(payload) {
+  const dupe = await db.collection('tips').where('title', '==', payload.title.trim()).limit(1).get();
+  if (!dupe.empty) throw new Error(`tip "${payload.title}" already exists - pick a different title`);
+  const body = htmlToText(payload.html);
+  await db.collection('tips').add({
+    title: payload.title.trim(),
+    body,
+    published: true,
     source: 'marketing-agent',
     createdAt: new Date().toISOString()
   });
+  const { slugify } = require('../controllers/tipsPageController');
+  const url = `https://superspeech.biz/tips/${slugify(payload.title)}`;
   await emailService.transporter.sendMail({
     from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
     to: AGENT_EMAIL,
-    subject: `[Marketing Agent] New tip draft: ${payload.title}`,
-    html: `<p><i>Parked in Firestore tipDrafts (slug: ${slug}) - review and publish when ready.</i></p><hr>${payload.html || ''}`
+    subject: `[Marketing Agent] Published tip: ${payload.title}`,
+    html: `<p><i>Live now at <a href="${url}">${url}</a> - no action needed, FYI only.</i></p><hr>${payload.html || ''}`
   });
-  return { draftTitle: payload.title, parkedIn: 'tipDrafts', emailedDraft: true };
+  return { publishedTitle: payload.title, url };
+}
+
+// When the agent needs something only Nathan can do (a login, a manual
+// signup, a decision), it asks rather than stalling.
+async function execAskNathan(payload) {
+  await emailService.transporter.sendMail({
+    from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
+    to: AGENT_EMAIL,
+    subject: `[Marketing Agent] Needs you: ${payload.title || 'help wanted'}`,
+    html: SENT_EMAIL_HTML(payload.body)
+  });
+  return { askedFor: payload.title };
 }
 
 const EXECUTORS = {
   newsletter: execNewsletter,
   cold_outreach: execColdOutreach,
-  tip_draft: execTipDraft
+  publish_tip: execPublishTip,
+  ask_nathan: execAskNathan
 };
 
 // --- the daily decision -----------------------------------------------------
@@ -274,13 +303,14 @@ async function decide(context) {
 
 Reply with ONLY a JSON object choosing today's ONE action. Flat shape - put your chosen action's fields at the TOP LEVEL of the object:
 {
-  "action": "newsletter" | "outreach_draft" | "tip_draft" | "rest",
+  "action": "newsletter" | "cold_outreach" | "publish_tip" | "ask_nathan" | "rest",
   "reason": "one sentence why this is today's best move"
 }
 Plus these REQUIRED fields depending on the action:
 - newsletter: "subject" (string), "text" (plain-text body <=250 words), "html" (same content as <p> paragraphs, no outer wrapper)
 - cold_outreach: "targetName" (who/org), "targetEmail" (a REAL address - it gets emailed directly; contact@/hello@/info@ style addresses on real, established domains), "strategy" (e.g. "directory listing", "cross-promo offer", "guest post pitch"), "subject", "body" (short, warm, non-spammy email signed "Nathan, superspeech.biz" - honest founder-run framing, ONE clear ask, no fake familiarity)
-- tip_draft: "title" (e.g. "Groom Speech: 7 Lines That Always Land"), "html" (useful article body, <h2>/<p>, 400-600 words)
+- publish_tip: "title" (e.g. "Groom Speech: 7 Lines That Always Land"), "html" (useful article body, <h2>/<p>, 400-600 words) - publishes LIVE on superspeech.biz/tips immediately
+- ask_nathan: "title" (what you need, e.g. "login for weddingdirectory.co.uk"), "body" (the request explained)
 - rest: no extra fields - only if every option is clearly pointless today
 Pick "rest" sparingly - there's almost always something worth doing. Keep newsletter bodies under 250 words, warm and useful, one soft mention of the service at most.`;
 
@@ -295,16 +325,19 @@ function payloadMissing(d) {
   const need = {
     newsletter: ['subject', 'text', 'html'],
     cold_outreach: ['targetName', 'targetEmail', 'subject', 'body', 'strategy'],
-    tip_draft: ['title', 'html'],
+    publish_tip: ['title', 'html'],
+    ask_nathan: ['title', 'body'],
     rest: []
   }[d.action] || ['__unknown_action__'];
   return need.filter(k => !d[k]);
 }
 
 async function buildContext() {
-  const [acts, subs, candidates, newsletterGap] = await Promise.all([
-    recentActions(15), subscriberCount(), followupCandidates(), lastNewsletterDaysAgo()
+  const [acts, subs, candidates, newsletterGap, tipSnap] = await Promise.all([
+    recentActions(15), subscriberCount(), followupCandidates(), lastNewsletterDaysAgo(),
+    db.collection('tips').get().catch(() => null)
   ]);
+  const tipTitles = tipSnap ? tipSnap.docs.map(d => d.data().title).filter(Boolean) : [];
   const history = acts.length
     ? acts.map(a => `- ${a.date} [${a.type}] ${a.title || a.summary || ''}`).join('\n')
     : 'No marketing actions recorded yet - this is day one.';
@@ -315,7 +348,9 @@ CURRENT STATE:
 - Mailing-list subscribers: ${subs}
 - Days since last newsletter: ${newsletterGap === Infinity ? 'never sent' : Math.floor(newsletterGap)}
 - Customers eligible for follow-up (handled automatically, don't pick this): ${candidates.length}
-- Newsletter cooldown: needs >= ${NEWSLETTER_MIN_GAP_DAYS} days between sends${newsletterGap < NEWSLETTER_MIN_GAP_DAYS ? ' - DO NOT pick newsletter today' : ''}`;
+- Newsletter cooldown: needs >= ${NEWSLETTER_MIN_GAP_DAYS} days between sends${newsletterGap < NEWSLETTER_MIN_GAP_DAYS ? ' - DO NOT pick newsletter today' : ''}
+- Existing published tip titles (publish_tip must NOT repeat these):
+${tipTitles.map(t => `  * ${t}`).join('\n') || '  (none yet)'}`;
 }
 
 // --- public entry ------------------------------------------------------------
