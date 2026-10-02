@@ -38,6 +38,16 @@ router.post('/marketing-run', async (req, res) => {
   }
 });
 
+// On-demand social follow sweep (also runs inside the daily marketing run)
+router.post('/follow-sweep', async (req, res) => {
+  try {
+    const follows = require('../services/socialFollowService');
+    res.json({ success: true, ...(await follows.runFollowSweep()) });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Re-email a parked tip draft to hello@ (latest if no ?id given)
 router.post('/tip-draft-email', async (req, res) => {
   try {

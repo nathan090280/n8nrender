@@ -445,7 +445,7 @@ Return the FINAL play as a JSON object - same fields as before. Use REAL facts f
 
 // Nathan wants a daily surprise report - this is it. Sent after every run
 // (including rests) so he always knows what his exec did today.
-async function sendDailyReport({ decision, result, followups, error }) {
+async function sendDailyReport({ decision, result, followups, follows, error }) {
   const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const p = t => `<p style="margin:0 0 14px;line-height:1.6;">${t}</p>`;
   const blocks = [];
@@ -470,6 +470,7 @@ async function sendDailyReport({ decision, result, followups, error }) {
 
   }
   if (followups?.length) blocks.push(p(`📬 Follow-up emails also went to ${followups.length} customer(s).`));
+  if (follows) blocks.push(p(`👥 Social follows today: ${follows.mastodon || 0} on Mastodon, ${follows.bluesky || 0} on Bluesky.`));
 
   await emailService.transporter.sendMail({
     from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
@@ -604,10 +605,12 @@ async function runDaily({ force = false } = {}) {
   }
 
   const context = await buildContext();
-  // Two events every day: an autonomous play AND an idea for Nathan.
-  const [decision, idea] = await Promise.all([
+  // Three events every day: an autonomous play, an idea for Nathan, and
+  // the social follow sweep (Mastodon + Bluesky follow-backs).
+  const [decision, idea, follows] = await Promise.all([
     decide(context).catch(e => { console.error('[Marketing] decision call failed:', e.message); return null; }),
-    generateIdeaForNathan(context).catch(e => { console.warn('[Marketing] idea generation failed:', e.message); return null; })
+    generateIdeaForNathan(context).catch(e => { console.warn('[Marketing] idea generation failed:', e.message); return null; }),
+    require('./socialFollowService').runFollowSweep().catch(e => { console.warn('[Marketing] follow sweep failed:', e.message); return null; })
   ]);
 
   // Research pass: if it asked for a page, fetch it and let it refine the
@@ -631,8 +634,8 @@ async function runDaily({ force = false } = {}) {
       : decision.action === 'rest' ? `rested: ${decision.reason || ''}`
       : `missing fields: ${missing.join(', ')}`;
     await logAction({ type: 'rest', title: why, summary: decision?.reason || 'Claude returned no usable decision' });
-    await sendDailyReport({ decision: decision || { action: 'rest', reason: why }, followups }).catch(e => console.warn('[Marketing] report failed:', e.message));
-    return { action: 'rest', reason: decision?.reason || why, followups, idea };
+    await sendDailyReport({ decision: decision || { action: 'rest', reason: why }, followups, follows }).catch(e => console.warn('[Marketing] report failed:', e.message));
+    return { action: 'rest', reason: decision?.reason || why, followups, idea, follows };
   }
 
   let result;
@@ -641,8 +644,8 @@ async function runDaily({ force = false } = {}) {
   } catch (e) {
     console.error('[Marketing] executor failed:', decision.action, e.message);
     await logAction({ type: decision.action, title: decision.playName || 'Action failed', summary: e.message, emailSent: false });
-    await sendDailyReport({ decision, error: e.message, followups }).catch(() => {});
-    return { action: decision.action, error: e.message, followups, idea };
+    await sendDailyReport({ decision, error: e.message, followups, follows }).catch(() => {});
+    return { action: decision.action, error: e.message, followups, idea, follows };
   }
 
   await logAction({
@@ -653,9 +656,9 @@ async function runDaily({ force = false } = {}) {
     targetEmail: result.emailSent?.to,
     emailSent: !!result.emailSent
   });
-  await sendDailyReport({ decision, result, followups }).catch(e => console.warn('[Marketing] report failed:', e.message));
+  await sendDailyReport({ decision, result, followups, follows }).catch(e => console.warn('[Marketing] report failed:', e.message));
   console.log(`[Marketing] daily play: ${decision.playName || decision.action} - ${decision.reason}${idea ? ` | idea for Nathan: ${idea.title}` : ''}`);
-  return { action: decision.action, reason: decision.reason, result, followups, idea };
+  return { action: decision.action, reason: decision.reason, result, followups, idea, follows };
 }
 
 module.exports = { runDaily, runFollowupSweep, recordLead, findLead, generateLeadReply, brandCheck };
