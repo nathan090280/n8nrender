@@ -10,7 +10,10 @@ const firebaseService = require('./firebaseService');
 // Published tips go straight into the `tips` collection - the tips index,
 // sitemap and card images all render live from it, no deploy needed.
 
-const TIPS_CONTEXT = `You write the tip pages for SuperSpeech (superspeech.biz), an AI speech-writing service. Published tips are genuinely useful standalone reads - the kind someone Googling "how do I write a best man speech" is glad they found. Voice: warm, witty, practical, British. Every tip ends by making the reader feel they could do it themselves - but subtly glad a service exists.`;
+const TIPS_CONTEXT = `You write the tip cards for SuperSpeech (superspeech.biz), an AI speech-writing service. House style: ONE punchy tip per card, 50-80 words of plain prose - a clear rule or warning, why it works, maybe one vivid concrete detail. No headings, no lists, no fluff. Warm, witty, British. Examples of the established style:
+- "Never Open with a Dictionary Definition" -> 'Webster's defines marriage as...' and half the room has already tuned out. Open with a person, a moment, or a promise - never a dictionary."
+- "The 3-Story Rule" -> "Two stories minimum, three maximum. One is too thin, four is a memoir. Pick moments that show character, not chronology."
+- "Read It Aloud Before the Day" -> "A sentence that reads beautifully can tie your tongue in knots. Read the whole speech aloud, standing up - anything you stumble on twice gets rewritten."`;
 
 async function existingTipTitles() {
   try {
@@ -27,12 +30,12 @@ async function publishTip() {
 Existing tip titles (do NOT repeat or near-duplicate these):
 ${existing.map(t => `- ${t}`).join('\n') || '(none yet)'}
 
-Write ONE new tip article. Pick a topic with real search demand: a specific occasion/role, a classic problem ("opening lines", "how long", "what not to say"), or a delivery technique.
+Write ONE new tip card in exactly the house style above - 50-80 words. Pick a topic with real search demand: a specific occasion/role, a classic problem ("opening lines", "how long", "what not to say"), or a delivery technique.
 
 Reply with ONLY JSON:
 {
-  "title": "page title, e.g. 'Best Man Speech: 7 Openers That Always Work'",
-  "body": "the article as PLAIN TEXT, 450-650 words. Separate paragraphs with a blank line. No markdown, no HTML - plain prose with occasional short lists written as plain lines starting with a dash."
+  "title": "short punchy title, e.g. 'The Toast Test' or 'Never Thank the Venue'",
+  "body": "the tip as PLAIN TEXT, 50-80 words, 1-2 short paragraphs, no markdown or HTML"
 }`,
     { maxTokens: 1400, temperature: 0.85 });
 

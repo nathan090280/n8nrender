@@ -309,7 +309,7 @@ Reply with ONLY a JSON object choosing today's ONE action. Flat shape - put your
 Plus these REQUIRED fields depending on the action:
 - newsletter: "subject" (string), "text" (plain-text body <=250 words), "html" (same content as <p> paragraphs, no outer wrapper)
 - cold_outreach: "targetName" (who/org), "targetEmail" (a REAL address - it gets emailed directly; contact@/hello@/info@ style addresses on real, established domains), "strategy" (e.g. "directory listing", "cross-promo offer", "guest post pitch"), "subject", "body" (short, warm, non-spammy email signed "Nathan, superspeech.biz" - honest founder-run framing, ONE clear ask, no fake familiarity)
-- publish_tip: "title" (e.g. "Groom Speech: 7 Lines That Always Land"), "html" (useful article body, <h2>/<p>, 400-600 words) - publishes LIVE on superspeech.biz/tips immediately
+- publish_tip: "title" (short punchy title, e.g. "The Toast Test"), "html" (ONE punchy tip, 50-80 words in 1-2 short <p> tags - house style: a clear rule or warning + why it works + one vivid detail, no headings or lists) - publishes LIVE on superspeech.biz/tips immediately
 - ask_nathan: "title" (what you need, e.g. "login for weddingdirectory.co.uk"), "body" (the request explained)
 - rest: no extra fields - only if every option is clearly pointless today
 Pick "rest" sparingly - there's almost always something worth doing. Keep newsletter bodies under 250 words, warm and useful, one soft mention of the service at most.`;
