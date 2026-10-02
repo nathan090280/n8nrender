@@ -152,6 +152,32 @@ async function domainAcceptsMail(email) {
 const SENT_EMAIL_HTML = (body) => String(body || '').split(/\n+/).filter(Boolean)
   .map(p => `<p style="margin:0 0 14px;line-height:1.6;">${p}</p>`).join('');
 
+// Upsert a lead record - every cold-outreach target is kept so replies can
+// be matched back and Nathan can review the whole pipeline.
+async function recordLead({ email, name, subject, body, source }) {
+  const snap = await db.collection('marketingLeads').where('email', '==', email).limit(1).get();
+  if (!snap.empty) {
+    await snap.docs[0].ref.update({
+      lastContactedAt: new Date().toISOString(),
+      contactCount: (snap.docs[0].data().contactCount || 1) + 1
+    });
+    return snap.docs[0].id;
+  }
+  const ref = await db.collection('marketingLeads').add({
+    email,
+    name: name || '',
+    source: source || 'agent-cold-outreach',
+    status: 'contacted',
+    firstContactedAt: new Date().toISOString(),
+    lastContactedAt: new Date().toISOString(),
+    contactCount: 1,
+    lastSubject: subject || '',
+    lastBodySnippet: String(body || '').slice(0, 500),
+    replies: []
+  });
+  return ref.id;
+}
+
 // Cold outreach: ONE real email per day max, to an address the agent picked.
 // Rail: we DNS-check the target domain accepts mail first. If the address
 // looks unverifiable, the draft goes to Nathan to handle instead of sending.
@@ -167,6 +193,11 @@ async function execColdOutreach(payload) {
       subject: payload.subject || 'Quick question',
       text: String(payload.body || ''),
       html: SENT_EMAIL_HTML(payload.body)
+    });
+    await recordLead({
+      email: to, name: payload.targetName,
+      subject: payload.subject, body: payload.body,
+      source: 'agent-cold-outreach'
     });
     return { emailed: to, subject: payload.subject, cold: true };
   }

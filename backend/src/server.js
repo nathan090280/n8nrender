@@ -68,7 +68,8 @@ app.get('/health', (req, res) => {
 // Webhook endpoints require the shared API key (sent by the site's frontend)
 app.use('/api/webhooks', (req, res, next) => {
   const configuredKey = process.env.API_SECRET_KEY;
-  if (configuredKey && req.headers['x-api-key'] !== configuredKey) {
+  // ?key= fallback lets the owner view admin pages (e.g. /leads) in a browser
+  if (configuredKey && req.headers['x-api-key'] !== configuredKey && req.query.key !== configuredKey) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
   next();

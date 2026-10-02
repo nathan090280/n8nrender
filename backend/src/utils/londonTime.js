@@ -6,8 +6,12 @@ function londonNow() {
     hour: '2-digit', minute: '2-digit', hour12: false
   }).formatToParts(new Date());
   const get = (t) => parts.find(p => p.type === t)?.value;
+  const weekday = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', weekday: 'short'
+  }).format(new Date()); // 'Mon', 'Tue', ...
   return {
     date: `${get('year')}-${get('month')}-${get('day')}`,
+    weekday,
     hour: parseInt(get('hour'), 10),
     minute: parseInt(get('minute'), 10)
   };

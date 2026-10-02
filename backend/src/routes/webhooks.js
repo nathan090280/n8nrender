@@ -63,6 +63,53 @@ router.post('/tip-draft-email', async (req, res) => {
   }
 });
 
+// Human-readable lead list for Nathan - open in a browser with ?key=
+router.get('/leads', async (req, res) => {
+  try {
+    const { db } = require('../config/firebase');
+    const snap = await db.collection('marketingLeads').orderBy('lastContactedAt', 'desc').limit(200).get();
+    const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const rows = snap.docs.map(d => {
+      const l = d.data();
+      const statusColor = { contacted: '#f59e0b', replied: '#16a34a', cold: '#94a3b8' }[l.status] || '#64748b';
+      const replyHtml = (l.replies || []).map(r =>
+        `<div style="margin:8px 0;padding:10px;background:#f0fdf4;border-left:3px solid #16a34a;border-radius:4px;font-size:13px;"><b>${esc(r.subject)}</b> <span style="color:#64748b;">${esc(r.at?.slice(0, 10))}</span><br>${esc(r.snippet)}</div>`
+      ).join('');
+      return `<tr><td style="padding:10px;border-bottom:1px solid #e2e8f0;"><b>${esc(l.name || l.email)}</b><br><span style="color:#64748b;font-size:13px;">${esc(l.email)}</span></td>
+<td style="padding:10px;border-bottom:1px solid #e2e8f0;"><span style="background:${statusColor};color:#fff;padding:2px 10px;border-radius:999px;font-size:12px;">${esc(l.status)}</span></td>
+<td style="padding:10px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#475569;">${esc(l.source)}<br>contacted ${esc((l.lastContactedAt || '').slice(0, 10))} (${l.contactCount || 1}x)</td>
+<td style="padding:10px;border-bottom:1px solid #e2e8f0;font-size:13px;"><b>${esc(l.lastSubject)}</b><br><span style="color:#64748b;">${esc(l.lastBodySnippet)}</span>${replyHtml}</td></tr>`;
+    }).join('');
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>SuperSpeech Leads</title></head>
+<body style="font-family:Arial,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#1e293b;">
+<h1 style="color:#2563eb;">Marketing Leads</h1>
+<p style="color:#64748b;">${snap.size} lead(s) - auto-updated as outreach sends and replies arrive.</p>
+<table style="border-collapse:collapse;width:100%;"><tr style="background:#f1f5f9;text-align:left;"><th style="padding:10px;">Lead</th><th style="padding:10px;">Status</th><th style="padding:10px;">Source</th><th style="padding:10px;">Last outreach / replies</th></tr>${rows || '<tr><td colspan="4" style="padding:20px;color:#64748b;">No leads yet - the agent records them here.</td></tr>'}</table>
+</body></html>`);
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Manual triggers for the weekly content jobs (scheduler calls these too)
+router.post('/publish-tip', async (req, res) => {
+  try {
+    const svc = require('../services/weeklyContentService');
+    res.json({ success: true, ...(await svc.publishTip()) });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/send-newsletter', async (req, res) => {
+  try {
+    const svc = require('../services/weeklyContentService');
+    res.json({ success: true, ...(await svc.sendWeeklyNewsletter()) });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 router.get('/tips', webhookController.handleGetTips);
 
 router.post('/test', webhookController.handleTestWebhook);

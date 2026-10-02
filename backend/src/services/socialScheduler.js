@@ -19,6 +19,12 @@ const DIGEST_MINUTE = parseInt(process.env.SOCIAL_DIGEST_MINUTE || '30', 10);
 // Marketing Executive: one autonomous action per day, daytime slot.
 const MARKETING_HOUR = parseInt(process.env.MARKETING_HOUR || '11', 10);
 const MARKETING_MINUTE = parseInt(process.env.MARKETING_MINUTE || '30', 10);
+// Weekly content: new tip pages on these London weekdays, newsletter on Sunday eve.
+const TIP_DAYS = (process.env.TIP_DAYS || 'Tue,Fri').split(',').map(s => s.trim());
+const TIP_HOUR = parseInt(process.env.TIP_HOUR || '10', 10);
+const NEWSLETTER_DAY = process.env.NEWSLETTER_DAY || 'Sun';
+const NEWSLETTER_HOUR = parseInt(process.env.NEWSLETTER_HOUR || '19', 10);
+const NEWSLETTER_MINUTE = parseInt(process.env.NEWSLETTER_MINUTE || '0', 10);
 const TICK_MS = 60 * 1000;
 
 // Full pipeline: guide -> Claude -> card -> publish -> Firestore record.
@@ -106,6 +112,18 @@ async function alreadyMarketedToday(londonDate) {
   } catch { return false; }
 }
 
+async function jobRanToday(name, londonDate) {
+  try {
+    const doc = await db.collection('jobLog').doc(`${name}_${londonDate}`).get();
+    return doc.exists;
+  } catch { return false; }
+}
+
+async function markJobRan(name, londonDate, result) {
+  await db.collection('jobLog').doc(`${name}_${londonDate}`)
+    .set({ ranAt: new Date().toISOString(), result }).catch(() => {});
+}
+
 async function tick() {
   const now = londonNow();
 
@@ -125,6 +143,33 @@ async function tick() {
       console.log(`[Marketing] Daily run done: ${result.action || 'none'}`);
     } catch (e) {
       console.error('[Marketing] Daily run failed:', e.message);
+    }
+    return;
+  }
+
+  // Tip generator: new published tip on TIP_DAYS at ~TIP_HOUR UK
+  if (TIP_DAYS.includes(now.weekday) && now.hour === TIP_HOUR && !(await jobRanToday('tip', now.date))) {
+    try {
+      const result = await require('./weeklyContentService').publishTip();
+      await markJobRan('tip', now.date, result);
+      console.log(`[Tips] Published "${result.title}"`);
+    } catch (e) {
+      console.error('[Tips] generation failed:', e.message);
+      await markJobRan('tip', now.date, { error: e.message });
+    }
+    return;
+  }
+
+  // Sunday-evening newsletter article to the mailing list
+  if (now.weekday === NEWSLETTER_DAY && now.hour === NEWSLETTER_HOUR && now.minute >= NEWSLETTER_MINUTE
+      && !(await jobRanToday('newsletter', now.date))) {
+    try {
+      const result = await require('./weeklyContentService').sendWeeklyNewsletter();
+      await markJobRan('newsletter', now.date, result);
+      console.log(`[Newsletter] Sent "${result.subject}" to ${result.sent}`);
+    } catch (e) {
+      console.error('[Newsletter] failed:', e.message);
+      await markJobRan('newsletter', now.date, { error: e.message });
     }
     return;
   }
@@ -157,7 +202,7 @@ async function tick() {
 }
 
 function start() {
-  console.log(`[Social] Daily poster armed - posts at ${POST_HOUR}:00, digest at ${DIGEST_HOUR}:${String(DIGEST_MINUTE).padStart(2, '0')}, marketing agent at ${MARKETING_HOUR}:${String(MARKETING_MINUTE).padStart(2, '0')} Europe/London`);
+  console.log(`[Social] Armed - posts ${POST_HOUR}:00, digest ${DIGEST_HOUR}:${String(DIGEST_MINUTE).padStart(2, '0')}, marketing ${MARKETING_HOUR}:${String(MARKETING_MINUTE).padStart(2, '0')}, tips ${TIP_DAYS.join('+')} ${TIP_HOUR}:00, newsletter ${NEWSLETTER_DAY} ${NEWSLETTER_HOUR}:${String(NEWSLETTER_MINUTE).padStart(2, '0')} Europe/London`);
   setInterval(tick, TICK_MS);
   tick(); // covers the case where the server boots inside the posting hour
 }
