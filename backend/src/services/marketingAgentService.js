@@ -1,3 +1,4 @@
+const dns = require('dns').promises;
 const { db } = require('../config/firebase');
 const aiService = require('./aiService');
 const emailService = require('./emailService');
@@ -30,7 +31,9 @@ BUSINESS FACTS:
 - Free tip pages live at superspeech.biz/tips; there is a mailing list, social channels (Facebook, Instagram, Threads, Mastodon, Bluesky, Pinterest), and a Reddit lead listener that emails Nathan drafts.
 - Voice: warm, witty but professional, never salesy-spammy. British English.
 
-YOUR JOB: pick the single highest-value marketing action for today. Vary it day to day - don't repeat the same action type two days running unless the others make no sense.`;
+YOUR JOB: pick the single highest-value marketing action for today. Vary it day to day - don't repeat the same action type two days running unless the others make no sense.
+
+COLD OUTREACH RULES: You may send ONE real cold email per day to an address you believe exists (directory contact pages, partnership@, press@, list-owner addresses, sign-up-by-email requests etc). Only give an address you're confident is real - if the domain can't receive mail the send is aborted and the draft is emailed to Nathan instead. Never email the same address twice.`;
 
 function daysOld(iso) {
   return (Date.now() - new Date(iso).getTime()) / 86400000;
@@ -132,42 +135,87 @@ Keep it under 120 words, plain text, personal - like Nathan writing a quick note
   return { emailed: order.email, orderId: order.id, name: firstName };
 }
 
-// Cold outreach is NEVER sent automatically - the draft goes to Nathan to
-// review and send from his own mailbox.
-async function execOutreachDraft(payload) {
+async function alreadyEmailedCold(email) {
+  const acts = await recentActions(300);
+  return acts.some(a => a.type === 'cold_outreach' && a.targetEmail === email);
+}
+
+// Does this email's domain actually accept mail? Guards against the agent
+// hallucinating an address - no MX records, no send.
+async function domainAcceptsMail(email) {
+  const domain = String(email || '').split('@')[1];
+  if (!domain) return false;
+  try { return (await dns.resolveMx(domain)).length > 0; }
+  catch { return false; }
+}
+
+const SENT_EMAIL_HTML = (body) => String(body || '').split(/\n+/).filter(Boolean)
+  .map(p => `<p style="margin:0 0 14px;line-height:1.6;">${p}</p>`).join('');
+
+// Cold outreach: ONE real email per day max, to an address the agent picked.
+// Rail: we DNS-check the target domain accepts mail first. If the address
+// looks unverifiable, the draft goes to Nathan to handle instead of sending.
+async function execColdOutreach(payload) {
+  const to = String(payload.targetEmail || '').trim().toLowerCase();
+  const validShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
+  const isSelf = to === (process.env.EMAIL_FROM || 'hello@superspeech.biz').toLowerCase();
+
+  if (validShape && !isSelf && !(await alreadyEmailedCold(to)) && await domainAcceptsMail(to)) {
+    await emailService.transporter.sendMail({
+      from: `Nathan @ SuperSpeech <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
+      to,
+      subject: payload.subject || 'Quick question',
+      text: String(payload.body || ''),
+      html: SENT_EMAIL_HTML(payload.body)
+    });
+    return { emailed: to, subject: payload.subject, cold: true };
+  }
+
+  // Fallback: draft to Nathan with the reason it wasn't sent directly
+  const why = !validShape ? 'no valid address supplied'
+    : isSelf ? 'target was our own address'
+    : await alreadyEmailedCold(to) ? 'already contacted'
+    : 'domain does not accept mail (no MX records)';
   const html = [
-    `<p><b>Agent note:</b> cold outreach draft for you to review and send manually. Reasoning: <i>${payload.reason || ''}</i></p>`,
-    `<p><b>Suggested target type:</b> ${payload.targetType || ''}</p>`,
+    `<p><b>Agent note:</b> cold outreach draft - NOT sent automatically (${why}). Reasoning: <i>${payload.reason || ''}</i></p>`,
+    `<p><b>Target:</b> ${payload.targetName || ''} &lt;${to || 'none'}&gt;</p>`,
     `<hr>`,
     `<p><b>Subject:</b> ${payload.subject || ''}</p>`,
-    ...String(payload.body || '').split(/\n+/).filter(Boolean)
-      .map(p => `<p style="margin:0 0 14px;line-height:1.6;">${p}</p>`)
+    SENT_EMAIL_HTML(payload.body)
   ].join('');
   await emailService.transporter.sendMail({
     from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
     to: AGENT_EMAIL,
-    subject: `[Marketing Agent] Outreach draft: ${payload.targetType || 'new target'}`,
+    subject: `[Marketing Agent] Outreach draft (not sent): ${payload.targetName || 'new target'}`,
     html
   });
-  return { draftedFor: payload.targetType, subject: payload.subject };
+  return { draftedFor: payload.targetName, subject: payload.subject, notSent: why };
 }
 
-// Tip-page idea, fully drafted, parked for review in Firestore.
+// Tip-page idea, fully drafted: parked in Firestore AND emailed to Nathan
+// so it's readable without digging through the database.
 async function execTipDraft(payload) {
+  const slug = (payload.title || 'tip').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   await db.collection('tipDrafts').add({
     title: payload.title || 'Untitled',
-    slug: (payload.title || 'tip').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+    slug,
     bodyHtml: payload.html || '',
     status: 'draft',
     source: 'marketing-agent',
     createdAt: new Date().toISOString()
   });
-  return { draftTitle: payload.title, parkedIn: 'tipDrafts' };
+  await emailService.transporter.sendMail({
+    from: `SuperSpeech Marketing Agent <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
+    to: AGENT_EMAIL,
+    subject: `[Marketing Agent] New tip draft: ${payload.title}`,
+    html: `<p><i>Parked in Firestore tipDrafts (slug: ${slug}) - review and publish when ready.</i></p><hr>${payload.html || ''}`
+  });
+  return { draftTitle: payload.title, parkedIn: 'tipDrafts', emailedDraft: true };
 }
 
 const EXECUTORS = {
   newsletter: execNewsletter,
-  outreach_draft: execOutreachDraft,
+  cold_outreach: execColdOutreach,
   tip_draft: execTipDraft
 };
 
@@ -189,7 +237,7 @@ Reply with ONLY a JSON object choosing today's ONE action. Flat shape - put your
 }
 Plus these REQUIRED fields depending on the action:
 - newsletter: "subject" (string), "text" (plain-text body <=250 words), "html" (same content as <p> paragraphs, no outer wrapper)
-- outreach_draft: "targetType" (e.g. "UK wedding directories"), "subject", "body" (email text Nathan would send)
+- cold_outreach: "targetName" (who/org), "targetEmail" (a REAL address - it gets emailed directly; use contact@/hello@ style addresses on real domains like wedding directories, event-planning blogs, speech-related newsletters, listing sites - including asking to be listed/signed up), "subject", "body" (short, warm, non-spammy email signed "Nathan, superspeech.biz" - mention it's a founder-run service, be honest about why you're writing, ONE clear ask)
 - tip_draft: "title" (e.g. "Groom Speech: 7 Lines That Always Land"), "html" (useful article body, <h2>/<p>, 400-600 words)
 - rest: no extra fields - only if every option is clearly pointless today
 Pick "rest" sparingly - there's almost always something worth doing. Keep newsletter bodies under 250 words, warm and useful, one soft mention of the service at most.`;
@@ -204,7 +252,7 @@ Pick "rest" sparingly - there's almost always something worth doing. Keep newsle
 function payloadMissing(d) {
   const need = {
     newsletter: ['subject', 'text', 'html'],
-    outreach_draft: ['targetType', 'subject', 'body'],
+    cold_outreach: ['targetName', 'targetEmail', 'subject', 'body'],
     tip_draft: ['title', 'html'],
     rest: []
   }[d.action] || ['__unknown_action__'];
