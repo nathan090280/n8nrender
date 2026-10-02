@@ -204,16 +204,34 @@ async function execDailyPlay(payload, pageText) {
 
   let to = String(payload.targetEmail || '').trim().toLowerCase();
   const complete = payload.subject && payload.body;
-  const validShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
+  let validShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
   const isSelf = to === (process.env.EMAIL_FROM || 'hello@superspeech.biz').toLowerCase();
-  const domain = to.split('@')[1] || '';
+  let domain = to.split('@')[1] || '';
+
+  // No usable address? Fall back to targetUrl/researchUrl and scrape
+  // that domain for a real published contact address.
+  if (complete && (!validShape || isSelf)) {
+    const url = payload.targetUrl || payload.researchUrl;
+    if (url) {
+      try { domain = new URL(/^https?:/i.test(url) ? url : `https://${url}`).hostname.replace(/^www\./, ''); }
+      catch { domain = ''; }
+    }
+    if (domain) {
+      const found = await findRealAddress(domain);
+      if (found && !(await alreadyEmailedCold(found))) {
+        to = found;
+        validShape = true;
+        out.healedAddress = { fromSite: domain, found };
+      }
+    }
+  }
 
   // Mandatory research: an address is trusted if it appeared on a fetched
   // page, or if we scrape one off the domain's contact pages right now.
   // A real scraped address always beats a guessed one.
   if (complete && validShape && !isSelf) {
     const fromResearch = !!(pageText && pageText.toLowerCase().includes(to));
-    if (!fromResearch) {
+    if (!fromResearch && domain) {
       const found = await findRealAddress(domain);
       if (found && found !== to && !(await alreadyEmailedCold(found))) {
         out.healedAddress = { guessed: to, found };
