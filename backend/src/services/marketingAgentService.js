@@ -206,19 +206,26 @@ async function execDailyPlay(payload, pageText) {
   const complete = payload.subject && payload.body;
   const validShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
   const isSelf = to === (process.env.EMAIL_FROM || 'hello@superspeech.biz').toLowerCase();
+  const domain = to.split('@')[1] || '';
 
-  // Self-heal: guessed a bad address? Don't bother Nathan - fetch the
-  // domain's contact pages and extract a REAL address ourselves.
-  if (complete && validShape && !isSelf && !(await domainAcceptsMail(to))) {
-    const fixed = await findRealAddress(to.split('@')[1]);
-    if (fixed && !(await alreadyEmailedCold(fixed))) {
-      out.healedAddress = { guessed: to, found: fixed };
-      to = fixed;
+  // Mandatory research: an address is trusted if it appeared on a fetched
+  // page, or if we scrape one off the domain's contact pages right now.
+  // A real scraped address always beats a guessed one.
+  if (complete && validShape && !isSelf) {
+    const fromResearch = !!(pageText && pageText.toLowerCase().includes(to));
+    if (!fromResearch) {
+      const found = await findRealAddress(domain);
+      if (found && found !== to && !(await alreadyEmailedCold(found))) {
+        out.healedAddress = { guessed: to, found };
+        to = found;
+      }
     }
   }
 
+  // Send only if: address found on their site OR their domain accepts mail.
   if (complete && validShape && !isSelf
-      && !(await alreadyEmailedCold(to)) && await domainAcceptsMail(to)) {
+      && !(await alreadyEmailedCold(to))
+      && (out.healedAddress || (pageText && pageText.toLowerCase().includes(to)) || await domainAcceptsMail(to))) {
     await emailService.transporter.sendMail({
       from: `Nathan @ SuperSpeech <${process.env.EMAIL_FROM || 'hello@superspeech.biz'}>`,
       to,
