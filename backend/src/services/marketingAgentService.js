@@ -28,9 +28,14 @@ BUSINESS FACTS:
 - ALREADY AUTOMATED - never spend today's play on these: SEO tip cards (published Tue+Fri), the newsletter (Sundays 19:00), social card posts (daily 18:00), customer follow-up emails, the Reddit lead listener.
 - Voice: warm, witty, professional. British English.
 
-YOUR JOB: invent ONE fresh marketing play every day and execute it yourself. Nathan wants INGENUITY - new strategies, new angles, new channels - not routine work, and not repeats of plays you've already run (check the history). He approves nothing in advance; he reads the report afterwards. If a play needs a human-only step (a login, a web form, a phone call), still run the parts you can and flag what you need.
+YOUR JOB: invent ONE fresh marketing play every day and execute it COMPLETELY ALONE. Nathan wants INGENUITY - new strategies, new angles, new channels - not routine work, and not repeats of plays you've already run (check the history).
 
-HARD LIMIT: you can NEVER change the website, its structure, the backend, pricing, packages, or any code/config. Your tools are exactly: send ONE email, and describe plans for Nathan. Don't propose site changes - work entirely in channels outside the site (email, directories, partners, press, communities).
+ABSOLUTE RULES - breaking these is failure:
+- Nathan does ZERO work. NEVER pick a play that needs him to do anything - no calls, no accounts to create, no forms, no approvals, no "flag what you need". If a great idea needs a human, DON'T PICK IT - pick one you can finish alone.
+- Nathan is NOT a product and NEVER goes anywhere personally: no podcast guest pitches, no interviews, no workshops, no speaking offers, nothing that requires him to appear, talk, or be the face of anything. You are selling a SERVICE, not a person.
+- Emails you send come from hello@superspeech.biz about the service - never volunteer Nathan personally for anything.
+- You can NEVER change the website, its structure, the backend, pricing, packages, or any code/config.
+- Your tools are exactly: send ONE email, fetch ONE page for research, run ONE small script, and describe the play. Use them fully - a play you complete is worth ten you can't.
 
 WHAT A PLAY CAN BE - be creative, these are examples not a menu:
 - ONE strategically-targeted cold email (a directory listing, a vendor cross-promo, a guest-post pitch, a press/journalist angle, a podcast ask)
@@ -38,12 +43,12 @@ WHAT A PLAY CAN BE - be creative, these are examples not a menu:
 - RESEARCHING a real page first (researchUrl below) - e.g. fetch a directory's contact page and extract the REAL email instead of guessing
 - Running a small script of your own (script field) - pure computation only: parsing text, extracting emails from a fetched page, crunching numbers, formatting output. NO network, NO filesystem, keep it tiny - it's a scalpel not a bulldozer
 - A new offer or scheme, a press release, a partnership proposal - anything describable
-- Anything else you can execute via one email, a page fetch, a small script, or describe concretely enough that Nathan can finish it in two minutes
+- Anything else YOU can fully execute via one email, a page fetch, or a small script - if it needs Nathan's hands, it does not count
 
 COLD EMAIL RULES (only when the play involves emailing someone):
 - ONE external email max per day - only fill the email fields if today's play truly needs one
 - Strategic targets only - plausible path to a lead, a sale, or distribution. Never a random address
-- Real, established domains with published-style addresses (hello@, info@, press@, submissions@). If the domain can't accept mail the send aborts and Nathan gets the draft instead
+- Real, established domains. STRONGLY prefer using researchUrl on the target's contact/about page to find the REAL published address rather than guessing - a failed address wastes the day's one email. Guessing is a last resort; we'll still try to self-heal it by scraping their contact page
 - Never email the same address twice; no fake familiarity; ONE clear ask; signed "Nathan, superspeech.biz"`;
 
 function daysOld(iso) {
@@ -183,8 +188,6 @@ async function execDailyPlay(payload, pageText) {
     playName: payload.playName,
     summary: payload.summary,
     strategy: payload.strategy,
-    needsNathan: !!payload.needsNathan,
-    nathanNote: payload.nathanNote
   };
 
   // The agent's own script - tiny sandboxed compute. Input defaults to the
@@ -199,10 +202,20 @@ async function execDailyPlay(payload, pageText) {
   const wantsEmail = payload.targetEmail || payload.subject || payload.body;
   if (!wantsEmail) return out;
 
-  const to = String(payload.targetEmail || '').trim().toLowerCase();
+  let to = String(payload.targetEmail || '').trim().toLowerCase();
   const complete = payload.subject && payload.body;
   const validShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
   const isSelf = to === (process.env.EMAIL_FROM || 'hello@superspeech.biz').toLowerCase();
+
+  // Self-heal: guessed a bad address? Don't bother Nathan - fetch the
+  // domain's contact pages and extract a REAL address ourselves.
+  if (complete && validShape && !isSelf && !(await domainAcceptsMail(to))) {
+    const fixed = await findRealAddress(to.split('@')[1]);
+    if (fixed && !(await alreadyEmailedCold(fixed))) {
+      out.healedAddress = { guessed: to, found: fixed };
+      to = fixed;
+    }
+  }
 
   if (complete && validShape && !isSelf
       && !(await alreadyEmailedCold(to)) && await domainAcceptsMail(to)) {
@@ -236,7 +249,7 @@ async function execDailyPlay(payload, pageText) {
       to: AGENT_EMAIL,
       subject: `[Marketing Agent] Outreach draft (not sent): ${payload.targetName || 'new target'}`,
       html: [
-        `<p><b>Agent note:</b> draft NOT sent automatically (${why}). Reply "Approved" to send it.</p>`,
+        `<p><b>Agent note:</b> couldn't find a working address - NOT sent (${why}). FYI only, no action needed.</p>`,
         `<p><b>Target:</b> ${payload.targetName || ''} &lt;${to}&gt;</p><hr>`,
         `<p><b>Subject:</b> ${payload.subject}</p>`,
         SENT_EMAIL_HTML(payload.body)
@@ -248,15 +261,8 @@ async function execDailyPlay(payload, pageText) {
   return out;
 }
 
-// When the agent needs something only Nathan can do (a login, a manual
-// signup, a decision), it asks rather than stalling.
-async function execAskNathan(payload) {
-  return { askedFor: payload.playName, note: payload.nathanNote };
-}
-
 const EXECUTORS = {
-  daily_play: execDailyPlay,
-  ask_nathan: execAskNathan
+  daily_play: execDailyPlay
 };
 
 // --- agent tools: page research + sandboxed script ---------------------------
@@ -307,6 +313,24 @@ function runAgentScript(code, input) {
   }
 }
 
+// Pull a real contact address off a domain's usual contact pages. Used to
+// self-heal guessed addresses that fail the MX check - autonomy over asking.
+async function findRealAddress(domain) {
+  const emailRe = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+  const own = (process.env.EMAIL_FROM || 'hello@superspeech.biz').toLowerCase();
+  for (const path of ['/contact', '/contact-us', '/about', '']) {
+    const text = await fetchResearchPage(`https://${domain}${path}`);
+    if (!text) continue;
+    for (const found of (text.match(emailRe) || [])) {
+      const e = found.toLowerCase();
+      if (e === own) continue;
+      if (/\.(png|jpg|jpeg|gif|webp|svg)$/.test(e)) continue; // regex misfires on filenames
+      if (await domainAcceptsMail(e)) return e;
+    }
+  }
+  return null;
+}
+
 // Second pass: after fetching a research page, let the agent refine its play
 // with REAL data (e.g. swap a guessed address for the one actually on the page).
 async function refineWithResearch(context, draft, pageText) {
@@ -348,9 +372,9 @@ async function sendDailyReport({ decision, result, followups, error }) {
       blocks.push(p(`✅ <b>Email sent to</b> ${esc(result.emailSent.to)} - subject: "${esc(result.emailSent.subject)}" (BCC'd to you)`));
       if (decision.body) blocks.push(`<div style="background:#f0fdf4;border-left:4px solid #16a34a;padding:12px 16px;border-radius:8px;margin:14px 0;">${SENT_EMAIL_HTML(esc(decision.body))}</div>`);
     }
-    if (result?.emailNotSent) blocks.push(p(`📋 Email couldn't send (${esc(result.emailNotSent)}) - draft emailed separately, reply "Approved" to send it.`));
-    if (result?.askedFor) blocks.push(p(`🙋 <b>Needs you:</b> ${esc(result.askedFor)}<br>${esc(result.note)}`));
-    if (result?.needsNathan && result?.nathanNote) blocks.push(p(`🙋 <b>Needs you:</b> ${esc(result.nathanNote)}`));
+    if (result?.healedAddress) blocks.push(p(`🔧 <b>Self-healed:</b> guessed <s>${esc(result.healedAddress.guessed)}</s>, found real address ${esc(result.healedAddress.found)} on their contact page`));
+    if (result?.emailNotSent) blocks.push(p(`📋 Email couldn't send (${esc(result.emailNotSent)}) - draft kept in the log, no action needed.`));
+
   }
   if (followups?.length) blocks.push(p(`📬 Follow-up emails also went to ${followups.length} customer(s).`));
 
@@ -375,18 +399,15 @@ async function decide(context) {
 
 Reply with ONLY a JSON object - flat shape, all fields at the TOP LEVEL:
 {
-  "action": "daily_play" | "ask_nathan" | "rest",
+  "action": "daily_play" | "rest",
   "playName": "short catchy name for today's play",
   "reason": "one sentence why this is today's best move",
-  "summary": "2-3 sentences: what the play is, how it works, expected outcome",
-  "needsNathan": true or false,
-  "nathanNote": "what you need from him if anything (a login, a form, a decision) - omit if nothing"
+  "summary": "2-3 sentences: what the play is, how it works, expected outcome"
 }
 - daily_play: the fields above, PLUS any of these optional tools:
   * "researchUrl" - a real page to fetch BEFORE finalising (contact pages, directory listings, anything you want facts from). You'll get the page text and one chance to refine your play with it
   * "script" - a small JS function body, gets {input} (include "scriptInput" if needed, e.g. the fetched page text), returns its result via a return statement. Pure compute only
   * IF the play involves sending one real email: "targetName" (org/person), "targetEmail" (a REAL address - it gets emailed directly), "strategy" (e.g. "press pitch", "directory listing", "cross-promo offer", "guest post pitch"), "subject", "body" (short, warm, non-spammy, signed "Nathan, superspeech.biz", ONE clear ask)
-- ask_nathan: "playName" = what you're trying to do, "nathanNote" = exactly what you need from him
 - rest: only if genuinely nothing is worth doing today
 
 Surprise Nathan - invent strategies he hasn't thought of. Repeating yesterday's play is failure.`;
@@ -401,7 +422,6 @@ Surprise Nathan - invent strategies he hasn't thought of. Repeating yesterday's 
 function payloadMissing(d) {
   const need = {
     daily_play: ['playName', 'reason', 'summary'],
-    ask_nathan: ['playName', 'nathanNote'],
     rest: []
   }[d.action] || ['__unknown_action__'];
   return need.filter(k => !d[k]);
