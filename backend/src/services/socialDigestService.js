@@ -140,7 +140,7 @@ async function siteAndBusiness() {
     countToday('contactInteractions'), collSize('contactInteractions'),
     db.collection('tips').where('published', '==', true).get().then(s => s.size).catch(() => null)
   ]);
-  const pair = (t, l) => `${t ?? 0} today (${l ?? 'n/a'} all-time)`;
+  const pair = (t, l) => ({ today: t ?? 0, all: l ?? 'n/a' });
   return {
     pageViews: pair(today.pageViews, lifetime.pageViews),
     tipPageViews: pair(today.tipPageViews, lifetime.tipPageViews),
@@ -195,6 +195,30 @@ function row(label, m, extra = '') {
   return `<tr><td style="padding:8px 12px;border:1px solid #e2e8f0;vertical-align:top;"><b>${label}</b></td><td style="padding:8px 12px;border:1px solid #e2e8f0;" colspan="3">${cells}${extra}</td></tr>`;
 }
 
+const th = 'padding:8px 12px;border:1px solid #e2e8f0;text-align:left;';
+const td = 'padding:8px 12px;border:1px solid #e2e8f0;';
+
+function siteTable(m) {
+  if (!m) return `<h3>Site &amp; Business</h3><p>unavailable</p>`;
+  const pairRow = (label, p) =>
+    `<tr><td style="${td}">${label}</td><td style="${td}"><b>${p.today}</b></td><td style="${td}">${p.all}</td></tr>`;
+  const singleRow = (label, v) =>
+    `<tr><td style="${td}">${label}</td><td style="${td}" colspan="2"><b>${v}</b></td></tr>`;
+  return `<h3>Site &amp; Business</h3>
+<table style="border-collapse:collapse;width:100%;">
+<tr style="background:#f1f5f9;"><th style="${th}">Metric</th><th style="${th}">Today</th><th style="${th}">All-time</th></tr>
+${pairRow('Page views', m.pageViews)}
+${pairRow('Tip page views', m.tipPageViews)}
+${pairRow('Tips index views', m.tipsIndexViews)}
+${pairRow('Card fetches', m.cardFetches)}
+${pairRow('New orders', m.orders)}
+${pairRow('Speeches generated', m.speechesGenerated)}
+${pairRow('Mailing-list signups', m.mailingListSignups)}
+${pairRow('Contact messages', m.contactMessages)}
+${singleRow('Published tips', m.publishedTips)}
+</table>`;
+}
+
 async function collectAndSend() {
   const posts = await todaysPosts();
   const fbIds = posts.map(p => p.results?.facebook?.id).filter(Boolean);
@@ -227,8 +251,8 @@ ${row('Threads', threads)}
 ${row('Mastodon', masto)}
 ${row('Bluesky', bsky)}
 ${row('Pinterest', pin)}
-${row('Site & Business', site)}
 </table>
+${siteTable(site)}
 <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Sent automatically by the SuperSpeech social engine. Gaps mean the platform API didn't expose the metric (often missing scopes) - not necessarily zero.</p>
 </body></html>`;
 
