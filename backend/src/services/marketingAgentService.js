@@ -57,6 +57,19 @@ function daysOld(iso) {
   return (Date.now() - new Date(iso).getTime()) / 86400000;
 }
 
+// Brand guard: Claude occasionally invents a product name mid-pitch
+// (it hallucinated "Toastly" into a real cold email once). Any outbound
+// text the agent authored is checked before it can leave the building:
+// a phantom name is an instant veto, and a cold pitch must mention us.
+const PHANTOM_NAMES = /\b(toastly|speechify|speecheasy|speechie|speechgenius|weddspeech|toastmaster\s?ai|vowcraft)\b/i;
+function brandCheck(text, { requireMention = false } = {}) {
+  const t = String(text || '');
+  const bad = t.match(PHANTOM_NAMES);
+  if (bad) return `hallucinated product name "${bad[0]}"`;
+  if (requireMention && !/superspeech/i.test(t)) return 'never mentions SuperSpeech';
+  return null;
+}
+
 // --- context ---------------------------------------------------------------
 
 async function recentActions(limit = 15) {
@@ -180,6 +193,50 @@ async function recordLead({ email, name, subject, body, source, strategy }) {
   return ref.id;
 }
 
+// Look up a lead by email - used when they reply so the AI can continue
+// the actual conversation instead of a generic support reply.
+async function findLead(email) {
+  const snap = await db.collection('marketingLeads')
+    .where('email', '==', String(email || '').toLowerCase()).limit(1).get();
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() };
+}
+
+// A marketing lead replied - continue THAT conversation, with full memory
+// of what we pitched and what they've said since. Nathan has authorised
+// the agent to go as deep as it can alone: negotiate, answer, share links,
+// agree reasonable partnership terms - anything executable over email.
+async function generateLeadReply(lead, { from, subject, text }) {
+  const history = (lead.replies || [])
+    .map(r => `- ${r.at}: "${r.snippet}"`).join('\n') || '- (first reply)';
+  const raw = await aiService.generateSocialCopy(
+    `${AGENT_CONTEXT}
+
+You sent this lead a cold outreach email as part of the play "${lead.strategy || 'outreach'}".
+What we sent them:
+Subject: ${lead.lastSubject || '(unknown)'}
+Body: ${lead.lastBodySnippet || '(unknown)'}
+
+Their replies so far:
+${history}
+
+They just emailed again:
+Subject: ${subject}
+From: ${from}
+Body:
+${String(text || '').slice(0, 3000)}
+
+Write the reply email body (plain text, no subject line) as Nathan at SuperSpeech:
+- Continue the actual conversation - you remember everything above, never act like a stranger
+- Answer their questions directly and enthusiastically; this is a WARM lead, the goal is a partnership, listing, or referral deal
+- You may agree to reasonable terms yourself: a referral commission of 10-25% per sale, free/discounted access for their members, cross-promotion, sending samples or tip-page links (superspeech.biz/tips)
+- HARD LIMITS: never spend money, never commit Nathan to calls/meetings/appearances (offer email instead), never promise refunds or free work at scale. If they ask for more, be warm and say you'll confirm specifics by email
+- The product is SuperSpeech (superspeech.biz) - NEVER invent product names
+- Keep it short and human: 4-8 sentences, no fluff`,
+    { maxTokens: 500, temperature: 0.5 });
+  return String(raw || '').trim();
+}
+
 // The daily play: whatever strategy the agent invented. If it includes an
 // email, that ONE email goes through the safety rails (real shape, not us,
 // never-contacted, domain accepts mail) then sends - BCC'd to Nathan.
@@ -242,8 +299,12 @@ async function execDailyPlay(payload, pageText) {
     }
   }
 
-  // Send only if: address found on their site OR their domain accepts mail.
-  if (complete && validShape && !isSelf
+  // Hard veto: hallucinated product name or no mention of SuperSpeech
+  // kills the send no matter how good the address is.
+  const brandFail = complete ? brandCheck(`${payload.subject}\n${payload.body}`, { requireMention: true }) : null;
+
+  // Send only if: on-brand, and address found on their site OR their domain accepts mail.
+  if (complete && validShape && !isSelf && !brandFail
       && !(await alreadyEmailedCold(to))
       && (out.healedAddress || (pageText && pageText.toLowerCase().includes(to)) || await domainAcceptsMail(to))) {
     await emailService.transporter.sendMail({
@@ -265,6 +326,7 @@ async function execDailyPlay(payload, pageText) {
 
   // Couldn't send - keep the draft email so Nathan can "Approved"-reply it
   const why = !complete ? 'email fields incomplete'
+    : brandFail ? `off-brand draft: ${brandFail}`
     : !validShape ? 'no valid address supplied'
     : isSelf ? 'target was our own address'
     : await alreadyEmailedCold(to) ? 'already contacted'
@@ -592,4 +654,4 @@ async function runDaily({ force = false } = {}) {
   return { action: decision.action, reason: decision.reason, result, followups, idea };
 }
 
-module.exports = { runDaily, runFollowupSweep, recordLead };
+module.exports = { runDaily, runFollowupSweep, recordLead, findLead, generateLeadReply, brandCheck };

@@ -137,15 +137,30 @@ async function processInboundEmail({ from, subject, text, html }) {
     return { approved: true };
   }
 
-  console.log('Generating AI reply for email from:', from);
-  const replyResult = await aiService.generateEmailReply(emailContent, from, subject);
+  // If this sender is a marketing lead, the agent continues the actual
+  // conversation (it knows what it pitched and every reply since) rather
+  // than the generic support path.
+  const { findLead, generateLeadReply, brandCheck } = require('./marketingAgentService');
+  const lead = await findLead(senderEmail(from)).catch(() => null);
 
   let replyContent;
-  if (replyResult.success) {
-    replyContent = replyResult.reply;
-  } else {
-    console.warn('AI reply generation failed, using fallback');
-    replyContent = replyResult.fallbackReply;
+  if (lead) {
+    console.log('Lead reply - continuing outreach conversation with:', from);
+    replyContent = await generateLeadReply(lead, { from, subject, text: emailContent })
+      .catch(() => null);
+  }
+  if (!replyContent) {
+    console.log('Generating AI reply for email from:', from);
+    const replyResult = await aiService.generateEmailReply(emailContent, from, subject);
+    replyContent = replyResult.success ? replyResult.reply : replyResult.fallbackReply;
+    if (!replyResult.success) console.warn('AI reply generation failed, using fallback');
+  }
+
+  // Brand guard on whatever we're about to send - a hallucinated product
+  // name must never reach an inbox.
+  if (brandCheck(replyContent)) {
+    console.warn('Reply tripped brand guard, sending safe fallback');
+    replyContent = `Hi,\n\nThanks for getting in touch - happy to help.\n\nYou can see what we do at https://superspeech.biz, including examples and our tip library at https://superspeech.biz/tips.\n\nIf you'd like to chat through anything specific, just reply here.\n\nNathan\nSuperSpeech`;
   }
 
   console.log('Sending auto-reply to:', from);
