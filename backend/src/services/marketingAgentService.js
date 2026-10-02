@@ -33,7 +33,14 @@ BUSINESS FACTS:
 
 YOUR JOB: pick the single highest-value marketing action for today. Vary it day to day - don't repeat the same action type two days running unless the others make no sense.
 
-COLD OUTREACH RULES: You may send ONE real cold email per day to an address you believe exists (directory contact pages, partnership@, press@, list-owner addresses, sign-up-by-email requests etc). Only give an address you're confident is real - if the domain can't receive mail the send is aborted and the draft is emailed to Nathan instead. Never email the same address twice.`;
+COLD OUTREACH: You may send ONE real cold email per day - but NEVER a random address. Think like a marketing executive: choose a target with a plausible path to a lead, a sale, or lasting distribution. Good target families:
+- Wedding/event directories couples actually search (listing requests)
+- Wedding vendors for mutual referral - planners, photographers, celebrants, venues with blogs
+- Wedding/event blogs accepting guest posts or tip submissions
+- Podcasts and newsletters about weddings, public speaking, events (guest slots, swaps)
+- Corporate event organisers, funeral celebrants - adjacent professionals who hear "I need a speech"
+Invent a fresh strategy each day - a guest-post pitch one day, a directory listing the next, a cross-promo offer after that. Prefer real, established sites and their published-style contact addresses (hello@, info@, contact@, submissions@). Only give an address you're confident is real - if the domain can't receive mail the send aborts and the draft goes to Nathan. Never email the same address twice.
+Include a "strategy" field (e.g. "directory listing", "cross-promo offer", "guest post pitch") describing the play.`;
 
 function daysOld(iso) {
   return (Date.now() - new Date(iso).getTime()) / 86400000;
@@ -154,7 +161,7 @@ const SENT_EMAIL_HTML = (body) => String(body || '').split(/\n+/).filter(Boolean
 
 // Upsert a lead record - every cold-outreach target is kept so replies can
 // be matched back and Nathan can review the whole pipeline.
-async function recordLead({ email, name, subject, body, source }) {
+async function recordLead({ email, name, subject, body, source, strategy }) {
   const snap = await db.collection('marketingLeads').where('email', '==', email).limit(1).get();
   if (!snap.empty) {
     await snap.docs[0].ref.update({
@@ -173,6 +180,7 @@ async function recordLead({ email, name, subject, body, source }) {
     contactCount: 1,
     lastSubject: subject || '',
     lastBodySnippet: String(body || '').slice(0, 500),
+    strategy: strategy || '',
     replies: []
   });
   return ref.id;
@@ -197,9 +205,9 @@ async function execColdOutreach(payload) {
     await recordLead({
       email: to, name: payload.targetName,
       subject: payload.subject, body: payload.body,
-      source: 'agent-cold-outreach'
+      source: 'agent-cold-outreach', strategy: payload.strategy
     });
-    return { emailed: to, subject: payload.subject, cold: true };
+    return { emailed: to, subject: payload.subject, cold: true, strategy: payload.strategy };
   }
 
   // Fallback: draft to Nathan with the reason it wasn't sent directly
@@ -220,7 +228,10 @@ async function execColdOutreach(payload) {
     subject: `[Marketing Agent] Outreach draft (not sent): ${payload.targetName || 'new target'}`,
     html
   });
-  return { draftedFor: payload.targetName, subject: payload.subject, notSent: why };
+  return {
+    draftedFor: payload.targetName, subject: payload.subject, notSent: why,
+    draftTo: to, draftSubject: payload.subject, draftBody: payload.body
+  };
 }
 
 // Tip-page idea, fully drafted: parked in Firestore AND emailed to Nathan
@@ -268,7 +279,7 @@ Reply with ONLY a JSON object choosing today's ONE action. Flat shape - put your
 }
 Plus these REQUIRED fields depending on the action:
 - newsletter: "subject" (string), "text" (plain-text body <=250 words), "html" (same content as <p> paragraphs, no outer wrapper)
-- cold_outreach: "targetName" (who/org), "targetEmail" (a REAL address - it gets emailed directly; use contact@/hello@ style addresses on real domains like wedding directories, event-planning blogs, speech-related newsletters, listing sites - including asking to be listed/signed up), "subject", "body" (short, warm, non-spammy email signed "Nathan, superspeech.biz" - mention it's a founder-run service, be honest about why you're writing, ONE clear ask)
+- cold_outreach: "targetName" (who/org), "targetEmail" (a REAL address - it gets emailed directly; contact@/hello@/info@ style addresses on real, established domains), "strategy" (e.g. "directory listing", "cross-promo offer", "guest post pitch"), "subject", "body" (short, warm, non-spammy email signed "Nathan, superspeech.biz" - honest founder-run framing, ONE clear ask, no fake familiarity)
 - tip_draft: "title" (e.g. "Groom Speech: 7 Lines That Always Land"), "html" (useful article body, <h2>/<p>, 400-600 words)
 - rest: no extra fields - only if every option is clearly pointless today
 Pick "rest" sparingly - there's almost always something worth doing. Keep newsletter bodies under 250 words, warm and useful, one soft mention of the service at most.`;
@@ -283,7 +294,7 @@ Pick "rest" sparingly - there's almost always something worth doing. Keep newsle
 function payloadMissing(d) {
   const need = {
     newsletter: ['subject', 'text', 'html'],
-    cold_outreach: ['targetName', 'targetEmail', 'subject', 'body'],
+    cold_outreach: ['targetName', 'targetEmail', 'subject', 'body', 'strategy'],
     tip_draft: ['title', 'html'],
     rest: []
   }[d.action] || ['__unknown_action__'];
@@ -377,4 +388,4 @@ async function runDaily({ force = false } = {}) {
   return { action: decision.action, reason: decision.reason, result, followups };
 }
 
-module.exports = { runDaily, runFollowupSweep };
+module.exports = { runDaily, runFollowupSweep, recordLead };
