@@ -124,6 +124,23 @@ async function markJobRan(name, londonDate, result) {
     .set({ ranAt: new Date().toISOString(), result }).catch(() => {});
 }
 
+// Atomic lock so two ticks don't both start the marketing agent while
+// runDaily is still thinking (it can take >1 minute because of Claude).
+async function acquireMarketingLock(londonDate) {
+  const ref = db.collection('marketingLog').doc(londonDate);
+  try {
+    await db.runTransaction(async t => {
+      const snap = await t.get(ref);
+      if (snap.exists) throw new Error('already locked');
+      t.set(ref, { startedAt: new Date().toISOString(), status: 'running' });
+    });
+    return true;
+  } catch (e) {
+    if (e.message === 'already locked') return false;
+    throw e;
+  }
+}
+
 async function tick() {
   const now = londonNow();
 
@@ -135,11 +152,17 @@ async function tick() {
 
   // Marketing Executive daily action at 11:30 UK (default) - follow-up
   // sweep runs inside it and doesn't count against the one-a-day.
-  if (now.hour === MARKETING_HOUR && now.minute >= MARKETING_MINUTE && !(await alreadyMarketedToday(now.date))) {
+  if (now.hour === MARKETING_HOUR && now.minute >= MARKETING_MINUTE) {
+    const locked = await acquireMarketingLock(now.date).catch(() => false);
+    if (!locked) return;
     try {
       const agent = require('./marketingAgentService');
       const result = await agent.runDaily();
-      await db.collection('marketingLog').doc(now.date).set({ ranAt: new Date().toISOString(), result });
+      await db.collection('marketingLog').doc(now.date).update({
+        finishedAt: new Date().toISOString(),
+        status: 'done',
+        result
+      });
       console.log(`[Marketing] Daily run done: ${result.action || 'none'}`);
     } catch (e) {
       console.error('[Marketing] Daily run failed:', e.message);
