@@ -633,9 +633,12 @@ async function runDaily({ force = false } = {}) {
   }
 
   const missing = decision && EXECUTORS[decision.action] ? payloadMissing(decision) : [];
-  if (!decision || !EXECUTORS[decision.action] || missing.length) {
-    // AI failed, picked rest, or skipped required fields - log + report
+  const playText = `${decision?.playName || ''} ${decision?.reason || ''} ${decision?.summary || ''}`;
+  const topicFail = decision?.action === 'daily_play' ? brandCheck(playText) : null;
+  if (!decision || !EXECUTORS[decision.action] || missing.length || topicFail) {
+    // AI failed, picked rest, skipped required fields, or proposed a banned topic
     const why = !decision ? 'decision parse failed'
+      : topicFail ? `off-brand play rejected: ${topicFail}`
       : !EXECUTORS[decision.action] && decision.action !== 'rest' ? `unknown action "${decision.action}"`
       : decision.action === 'rest' ? `rested: ${decision.reason || ''}`
       : `missing fields: ${missing.join(', ')}`;
