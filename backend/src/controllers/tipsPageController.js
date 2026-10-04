@@ -272,8 +272,9 @@ async function renderBrandCard(req, res) {
     statsService.track('cardFetches');
 
     const format = (ext === 'jpg' || ext === 'jpeg') ? 'jpeg' : 'png';
+    const theme = imageCardService.themeAt(req.query.t);
     const buf = await imageCardService.renderCard(
-      imageCardService.brandCardSvg({ headline: h, sub: s }), format);
+      imageCardService.brandCardSvg({ headline: h, sub: s, theme }), format);
     res.set('Content-Type', `image/${format === 'jpeg' ? 'jpeg' : 'png'}`);
     res.set('Cache-Control', 'public, max-age=86400');
     res.send(buf);

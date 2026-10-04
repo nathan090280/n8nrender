@@ -1,5 +1,6 @@
 const contentEngine = require('./contentEngine');
 const socialPostService = require('./socialPostService');
+const imageCardService = require('./imageCardService');
 const { db } = require('../config/firebase');
 const { londonNow } = require('../utils/londonTime');
 
@@ -34,9 +35,14 @@ async function runPostJob({ platforms, topic, category, dryRun, manual } = {}) {
   const post = manual || await contentEngine.generatePost({ topic, category });
 
   // Card media URLs point at the Render origin - platforms fetch the image
-  // themselves, so no Netlify proxy dependency.
+  // themselves, so no Netlify proxy dependency. The theme index rotates
+  // day-by-day (day-of-year mod palette count) so each post gets a new
+  // colour - and it's baked into the URL so every platform sees the same
+  // card whenever it fetches.
+  const themeIdx = Math.floor(Date.parse(londonNow().date) / 86400000)
+    % imageCardService.THEME_COUNT;
   const cardUrl = (ext) =>
-    `https://superspeech-backend.onrender.com/public/media/card.${ext}?h=${encodeURIComponent(post.cardHeadline)}&s=${encodeURIComponent(post.cardSub || '')}`;
+    `https://superspeech-backend.onrender.com/public/media/card.${ext}?h=${encodeURIComponent(post.cardHeadline)}&s=${encodeURIComponent(post.cardSub || '')}&t=${themeIdx}`;
 
   const wanted = platforms && platforms.length ? platforms
     : Object.keys(socialPostService.POSTERS);

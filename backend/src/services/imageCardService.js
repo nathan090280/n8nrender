@@ -73,6 +73,12 @@ function themeFor(text) {
   return THEMES[h % THEMES.length];
 }
 
+// Explicit index (e.g. day-of-year rotation carried in the card URL).
+function themeAt(idx) {
+  const i = parseInt(idx, 10);
+  return Number.isInteger(i) && i >= 0 && i < THEMES.length ? THEMES[i] : null;
+}
+
 // Social card variant for brand/engagement posts (hooks, jokes, polls, etc.)
 function brandCardSvg({ headline, sub, theme }) {
   const t = theme || themeFor(headline);
@@ -105,4 +111,4 @@ async function renderCard(svg, format = 'png') {
   return format === 'jpeg' ? img.jpeg({ quality: 90 }).toBuffer() : img.png().toBuffer();
 }
 
-module.exports = { tipCardSvg, brandCardSvg, renderCard };
+module.exports = { tipCardSvg, brandCardSvg, renderCard, themeAt, THEME_COUNT: THEMES.length };
