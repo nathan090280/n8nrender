@@ -241,6 +241,18 @@ app.get('/api/dashboard/:email', async (req, res) => {
   }
 });
 
+// ── Williams Quantum agent core (tenant mount) ─────────────────────────
+// Additive second site on this instance: WQ's routes + agent services live
+// under /wq with their own WQ_* env vars - zero overlap with SuperSpeech's
+// config. Mounted before the 404 handler because Express matches in
+// registration order. Fails soft: any WQ error logs a warning and the
+// SuperSpeech stack is unaffected. Delete this block to detach WQ entirely.
+try {
+  require('../wq/src/mount').mount(app);
+} catch (e) {
+  console.warn('[WQ] mount skipped:', e.message);
+}
+
 app.use((req, res) => {
   res.status(404).json({
     success: false,

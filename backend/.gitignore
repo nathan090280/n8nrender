@@ -27,6 +27,7 @@ pids/
 *.pid
 *.seed
 *.pid.lock
+wq/data/
 
 # Testing
 coverage/
