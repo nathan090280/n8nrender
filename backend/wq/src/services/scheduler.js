@@ -10,6 +10,12 @@ let lastRunDate = null;
 let running = false;
 
 async function tick() {
+  // Dispatch queued pitches whose recipient golden window has arrived.
+  try {
+    const agent = require('./agentService');
+    await agent.dispatchQueue();
+  } catch (e) { console.warn('[Scheduler] queue dispatch failed:', e.message); }
+
   const now = londonNow();
   if (now.hour === AGENT_HOUR && now.minute >= AGENT_MINUTE
       && lastRunDate !== now.date && !running) {

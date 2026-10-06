@@ -100,7 +100,8 @@ async function recentActions(limit = 15) {
 
 async function actionRanToday(londonDate) {
   const acts = await recentActions(10);
-  return acts.some(a => a.date === londonDate && a.type !== 'note');
+  return acts.some(a => a.date === londonDate
+    && (a.type === 'daily_batch' || a.type === 'daily_play'));
 }
 
 async function leadCount() {
@@ -425,7 +426,236 @@ Return the FINAL play as a JSON object - same fields. Use REAL facts from the pa
   return extractJson(raw);
 }
 
+// --- portfolio batch plays ------------------------------------------------------
+// Every product gets its own pitch each day: research a real target +
+// decision-maker, then queue the email for the recipient's golden window.
+
+const PRODUCTS = [
+  { id: 'WQ-001', name: 'SENTINEL CAP', slug: 'sentinel-cap',
+    brief: 'Combination-lock drink cover (anti-spiking). Industries: pub groups/breweries, festival operators, drinkware OEMs, hospitality suppliers, university safety programmes.' },
+  { id: 'WQ-002', name: 'PITTASAFE', slug: 'pittasafe',
+    brief: 'Steam-safe pitta pocket cutter. Industries: kitchenware OEMs, kitchen gadget brands, cookware companies, kitchen-tool distributors.' },
+  { id: 'WQ-003', name: 'ORBITCUT', slug: 'orbitcut',
+    brief: 'Guarded rotary scoring station for avocados and round fruit. Industries: kitchenware OEMs, kitchen gadget brands, housewares own-brand programmes.' },
+  { id: 'WQ-004', name: 'BATHBUDDY', slug: 'bathbuddy',
+    brief: 'All-mechanical hand-cranked bath foam cannon. Industries: bath/water toy manufacturers, toy OEMs, giftware brands, child-product distributors.' },
+  { id: 'WQ-005', name: 'UP AND ATOM', slug: 'upandatom',
+    brief: 'Playable educational chemistry browser game (shipped, live demo). Industries: edtech platforms, game publishers, learning brands, science academies/museums, curriculum providers.' },
+  { id: 'WQ-006', name: 'VANLIFE STARTMATE', slug: 'startmate',
+    brief: 'Plug-and-play inline soft-starter for campervan/off-grid power. Industries: campervan/motorhome conversion companies, leisure-vehicle brands, portable power station makers, off-grid OEMs.' },
+  { id: 'WQ-007', name: 'THE NON-PREACHY VEGAN HANDBOOK', slug: 'veganhandbook',
+    brief: 'Pocket-size humour gift book - 100 vegan survival tips, manuscript in final stages. Industries: humour/gift-book publishers, acquisitions editors, illustrated/lifestyle imprints, gift-range buyers.' }
+];
+
+// --- recipient-local golden windows --------------------------------------------
+// Primary 10:00-11:30, secondary 13:30-15:00 recipient local time.
+// Banned: 08:00-09:30, 11:45-13:00, 16:00+ - enforced by scheduling into windows.
+
+function tzOffsetMs(tz, at) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).formatToParts(at).reduce((a, p) => (a[p.type] = p.value, a), {});
+  return Date.UTC(+parts.year, +parts.month - 1, +parts.day,
+    +parts.hour, +parts.minute, +parts.second) - at.getTime();
+}
+
+function zonedToUtc(tz, y, m, d, h, mi) {
+  const guess = Date.UTC(y, m - 1, d, h, mi);
+  return new Date(guess - tzOffsetMs(tz, new Date(guess)));
+}
+
+// Next golden-window instant in the recipient's timezone, as a UTC Date.
+function nextGoldenTime(tz) {
+  try { new Intl.DateTimeFormat('en', { timeZone: tz }); }
+  catch { tz = 'Europe/London'; }
+  const now = Date.now();
+  const windows = [[10, 0], [13, 30]]; // window STARTS (local); spread up to +80 min
+  for (let d = 0; d < 4; d++) {
+    const probe = new Date(now + d * 86400000);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(probe).reduce((a, p) => (a[p.type] = +p.value, a), {});
+    for (const [sh, sm] of windows) {
+      const minute = sh * 60 + sm + Math.floor(Math.random() * 80);
+      const cand = zonedToUtc(tz, parts.year, parts.month, parts.day,
+        Math.floor(minute / 60), minute % 60);
+      if (cand.getTime() > now + 5 * 60000) return cand;
+    }
+  }
+  return new Date(now + 86400000);
+}
+
+// --- per-product planning -------------------------------------------------------
+
+async function planProductPlay(product, context) {
+  const raw = await aiService.generateSocialCopy(`${context}
+
+TODAY'S ASSIGNMENT - product: ${product.name} (${product.id})
+${product.brief}
+
+Pick ONE real company (UK or USA preferred) in the right industry that has NOT been contacted before (check HISTORY). Then HUNT the real decision-maker - product acquisition, licensing, R&D head, brand/category director, senior buyer or acquisitions editor - a named senior person, not an info@ inbox. Dig as deep into the company's public structure as you can; supply "researchUrl" (their team/about/contact page) so the person and email can be verified on-site. If you already know a real published contact email, give it directly.
+Return ONLY a JSON object:
+{"playName": "short catchy name", "targetCompany": "...", "targetName": "real person or ''", "targetRole": "their job title", "targetEmail": "real email or ''", "researchUrl": "page to verify/find them", "country": "...", "recipientTimezone": "IANA tz of recipient HQ e.g. Europe/London, America/New_York, America/Chicago, America/Los_Angeles", "subject": "<Product> - Product Pitch (hook) - title case", "body": "the email", "strategy": "e.g. licensing pitch", "reason": "why this target"}
+Body rules (per doctrine): greeting "Dear Mr/Ms <Surname>," ONLY if a real name is known - else "Hello," or "Good morning," - then a "Product Pitch - <Product>" header line, the URL https://williamsquantum.com/products/${product.slug} prominently mid-body, three-act FOMO arc, under 150 words, entirely their benefit, ONE low-friction CTA, signed "Williams Quantum - Commercial Development". No prices/terms. Concept-stage = idea ready to develop with them, never claim a prototype.`,
+    { maxTokens: 1600, temperature: 0.75 });
+  return extractJson(raw);
+}
+
+async function queueProductPitch(product, draft) {
+  const out = { product: product.name, scheduled: false };
+  if (!draft || !draft.subject || !draft.body) {
+    out.skipped = 'draft incomplete';
+    return out;
+  }
+
+  const brandFail = brandCheck(`${draft.playName || ''} ${draft.subject}\n${draft.body}`, { requireMention: true });
+  const commitFail = COMMITMENT.test(draft.body) ? 'draft committed to commercial terms' : null;
+  if (brandFail || commitFail) {
+    out.skipped = brandFail ? `off-brand: ${brandFail}` : commitFail;
+    return out;
+  }
+
+  let to = String(draft.targetEmail || '').trim().toLowerCase();
+  const validShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to);
+  const isSelf = to === SELF;
+
+  // Self-heal: no usable address -> scrape the target's own site for one.
+  if ((!validShape || isSelf) && draft.researchUrl) {
+    let domain = '';
+    try { domain = new URL(/^https?:/i.test(draft.researchUrl) ? draft.researchUrl : `https://${draft.researchUrl}`).hostname.replace(/^www\./, ''); }
+    catch { domain = ''; }
+    if (domain) {
+      const found = await findRealAddress(domain);
+      if (found && !(await alreadyEmailedCold(found))) {
+        to = found;
+        out.healedAddress = found;
+      }
+    }
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to) || to === SELF) {
+    out.skipped = 'no verified address found';
+    return out;
+  }
+
+  // Dedupe: history + anything already sitting in the queue.
+  const queued = await db.collection('sendQueue').where('status', '==', 'queued').get()
+    .catch(() => ({ docs: [] }));
+  const alreadyQueued = queued.docs.some(d => d.data().targetEmail === to);
+  if (alreadyQueued || await alreadyEmailedCold(to)) {
+    out.skipped = 'already contacted or queued';
+    return out;
+  }
+  if (!(out.healedAddress || await domainAcceptsMail(to))) {
+    out.skipped = 'domain does not accept mail';
+    return out;
+  }
+
+  const tz = draft.recipientTimezone || 'Europe/London';
+  const scheduledFor = nextGoldenTime(tz);
+  await db.collection('sendQueue').add({
+    product: product.name, productSlug: product.slug,
+    targetCompany: draft.targetCompany || '', targetName: draft.targetName || '',
+    targetRole: draft.targetRole || '', targetEmail: to,
+    subject: draft.subject, body: draft.body,
+    strategy: draft.strategy || 'licensing pitch',
+    recipientTimezone: tz, scheduledFor: scheduledFor.toISOString(),
+    status: 'queued', attempts: 0, createdAt: new Date().toISOString()
+  });
+
+  Object.assign(out, {
+    scheduled: true, to, when: scheduledFor.toISOString(), tz,
+    targetCompany: draft.targetCompany, targetName: draft.targetName
+  });
+  return out;
+}
+
+// --- timed dispatch -------------------------------------------------------------
+// Called on the scheduler tick; sends anything whose golden window has arrived.
+
+async function dispatchQueue() {
+  let snap;
+  try { snap = await db.collection('sendQueue').where('status', '==', 'queued').get(); }
+  catch { return; }
+  const now = Date.now();
+  for (const doc of snap.docs) {
+    const q = doc.data();
+    if (new Date(q.scheduledFor).getTime() > now) continue;
+    try {
+      if (await alreadyEmailedCold(q.targetEmail)) {
+        await doc.ref.update({ status: 'skipped', note: 'already contacted elsewhere' });
+        continue;
+      }
+      await emailService.transporter.sendMail({
+        from: `Williams Quantum <${SELF}>`,
+        to: q.targetEmail,
+        subject: q.subject,
+        text: String(q.body),
+        html: SENT_EMAIL_HTML(q.body),
+        bcc: OWNER_EMAIL
+      });
+      await doc.ref.update({ status: 'sent', sentAt: new Date().toISOString() });
+      await recordLead({
+        email: q.targetEmail, name: q.targetName,
+        subject: q.subject, body: q.body,
+        source: 'agent-daily-play', strategy: q.strategy
+      });
+      await logAction({
+        type: 'pitch_sent',
+        title: `${q.product} → ${q.targetCompany || q.targetName || q.targetEmail}`,
+        targetEmail: q.targetEmail, emailSent: true,
+        summary: `${q.strategy || 'licensing pitch'} (queued for ${q.recipientTimezone} window)`
+      });
+    } catch (e) {
+      const attempts = (q.attempts || 0) + 1;
+      if (attempts >= 3) {
+        await doc.ref.update({ status: 'failed', error: e.message, attempts });
+        await logAction({
+          type: 'pitch_failed',
+          title: `Queued pitch failed: ${q.targetEmail}`,
+          summary: e.message
+        });
+      } else {
+        await doc.ref.update({
+          attempts,
+          scheduledFor: new Date(now + 30 * 60000).toISOString()
+        });
+      }
+    }
+  }
+}
+
 // --- daily report ---------------------------------------------------------------
+
+async function sendPlaysReport(plays, error) {
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const p = t => `<p style="margin:0 0 14px;line-height:1.6;">${t}</p>`;
+  const blocks = [];
+
+  if (error) {
+    blocks.push(p(`<b>Batch run hit a snag:</b> ${esc(error)}`));
+  } else {
+    const sent = plays.filter(x => x.scheduled).length;
+    blocks.push(p(`<b>Today's batch:</b> ${sent}/${plays.length} product pitches researched and queued for golden-window delivery.`));
+    for (const x of plays) {
+      if (x.scheduled) {
+        const when = new Date(x.when).toLocaleString('en-GB', { timeZone: x.tz, weekday: 'short', hour: '2-digit', minute: '2-digit' });
+        blocks.push(p(`<b>${esc(x.product)}</b> → ${esc(x.targetCompany || '?')} — ${esc(x.targetName || 'unnamed contact')} &lt;${esc(x.to)}&gt;<br>sends ${esc(when)} ${esc(x.tz)}${x.healedAddress ? ' <i>(address scraped from their site)</i>' : ''}`));
+      } else {
+        blocks.push(p(`<b>${esc(x.product)}</b> → skipped: ${esc(x.skipped || x.reason || 'no plan')}`));
+      }
+    }
+    blocks.push(p(`You'll be BCC'd on each pitch as it sends. Replies route through the agent.`));
+  }
+
+  await emailService.transporter.sendMail({
+    from: `WQ Agent Core <${SELF}>`,
+    to: `${OWNER_EMAIL}, ${SELF}`,
+    subject: `[WQ Agent] Today's plays: ${plays.filter(x => x.scheduled).length} queued`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;color:#1e293b;">${blocks.join('')}</div>`
+  });
+}
 
 async function sendDailyReport({ decision, result, error }) {
   const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -478,7 +708,7 @@ ${history}
 
 CURRENT STATE:
 - Leads contacted: ${leads}
-- Portfolio licensing priorities: rotate across the whole portfolio - hardware concepts target their respective industries; UP AND ATOM targets edtech/games publishing.`;
+- Portfolio licensing priorities: EVERY product gets its own pitch each day - hardware targets its industry, UP AND ATOM targets edtech/games publishing, the book targets publishers/acquisitions editors.`;
 }
 
 async function decide(context) {
@@ -518,61 +748,48 @@ async function runDaily({ force = false } = {}) {
   }
 
   const context = await buildContext();
-  const decision = await decide(context).catch(e => {
-    console.error('[Agent] decision call failed:', e.message);
-    return null;
-  });
+  const plays = [];
 
-  let pageText = null;
-  if (decision?.researchUrl) {
-    pageText = await fetchResearchPage(decision.researchUrl);
-    if (pageText) {
-      try {
-        const refined = await refineWithResearch(context, decision, pageText);
-        if (refined && EXECUTORS[refined.action]) decision = refined;
-      } catch (e) { console.warn('[Agent] refine pass failed:', e.message); }
-    }
-  }
-
-  const missing = decision && EXECUTORS[decision.action] ? payloadMissing(decision) : [];
-  const playText = `${decision?.playName || ''} ${decision?.reason || ''} ${decision?.summary || ''}`;
-  const topicFail = decision?.action === 'daily_play' ? brandCheck(playText) : null;
-
-  if (!decision || !EXECUTORS[decision.action] || missing.length || topicFail) {
-    const why = !decision ? 'decision parse failed'
-      : topicFail ? `off-brand play rejected: ${topicFail}`
-      : !EXECUTORS[decision.action] && decision.action !== 'rest' ? `unknown action "${decision.action}"`
-      : decision.action === 'rest' ? `rested: ${decision.reason || ''}`
-      : `missing fields: ${missing.join(', ')}`;
-    await logAction({ type: 'rest', title: why, summary: decision?.reason || 'no usable decision' });
-    await sendDailyReport({ decision: decision || { action: 'rest', reason: why } }).catch(e => console.warn('[Agent] report failed:', e.message));
-    return { action: 'rest', reason: decision?.reason || why };
-  }
-
-  let result;
   try {
-    result = await EXECUTORS[decision.action](decision, pageText);
+    for (const product of PRODUCTS) {
+      // Plan -> up to 2 research passes (team page, contact page) -> queue.
+      let draft = await planProductPlay(product, context).catch(e => {
+        console.error(`[Agent] plan failed for ${product.name}:`, e.message);
+        return null;
+      });
+      if (!draft) { plays.push({ product: product.name, scheduled: false, skipped: 'planning call failed' }); continue; }
+
+      for (let pass = 0; pass < 2 && draft.researchUrl; pass++) {
+        const pageText = await fetchResearchPage(draft.researchUrl);
+        if (!pageText) break;
+        const refined = await refineWithResearch(context, draft, pageText)
+          .catch(e => { console.warn('[Agent] refine pass failed:', e.message); return null; });
+        if (!refined) break;
+        draft = { ...draft, ...refined };
+      }
+
+      plays.push(await queueProductPitch(product, draft)
+        .catch(e => ({ product: product.name, scheduled: false, skipped: e.message })));
+    }
   } catch (e) {
-    console.error('[Agent] executor failed:', decision.action, e.message);
-    await logAction({ type: decision.action, title: decision.playName || 'Action failed', summary: e.message, emailSent: false });
-    await sendDailyReport({ decision, error: e.message }).catch(() => {});
-    return { action: decision.action, error: e.message };
+    console.error('[Agent] batch run failed:', e.message);
+    await logAction({ type: 'daily_batch', title: 'Batch failed', summary: e.message });
+    await sendPlaysReport(plays, e.message).catch(() => {});
+    return { error: e.message };
   }
 
+  const sent = plays.filter(x => x.scheduled).length;
   await logAction({
-    type: decision.action,
-    title: decision.playName || decision.action,
-    summary: decision.reason,
-    detail: { ...result, summary: decision.summary, strategy: decision.strategy },
-    targetEmail: result.emailSent?.to,
-    emailSent: !!result.emailSent
+    type: 'daily_batch',
+    title: `Batch planned: ${sent}/${PRODUCTS.length} pitches queued`,
+    detail: plays
   });
-  await sendDailyReport({ decision, result }).catch(e => console.warn('[Agent] report failed:', e.message));
-  console.log(`[Agent] daily play: ${decision.playName || decision.action} - ${decision.reason}`);
-  return { action: decision.action, reason: decision.reason, result };
+  await sendPlaysReport(plays).catch(e => console.warn('[Agent] report failed:', e.message));
+  console.log(`[Agent] batch: ${sent}/${PRODUCTS.length} pitches queued for golden windows`);
+  return { queued: sent, plays };
 }
 
 module.exports = {
-  runDaily, recordLead, findLead, generateLeadReply,
+  runDaily, dispatchQueue, recordLead, findLead, generateLeadReply,
   escalateForApproval, brandCheck, requiresApproval, recentActions
 };
