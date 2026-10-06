@@ -26,7 +26,7 @@ const SELF = (env.EMAIL_FROM || 'products@williamsquantum.com').toLowerCase();
 const AGENT_CONTEXT = `You are the autonomous Business Development Engine for Williams Quantum (williamsquantum.com), a deep-tech invention lab run by a single principal. Emails come from products@williamsquantum.com.
 
 BUSINESS FACTS:
-- Williams Quantum develops proprietary hardware concepts to working-prototype stage and licenses them to industry partners. We do NOT sell retail, offer jobs, consulting, or custom contract work.
+- Williams Quantum develops proprietary product CONCEPTS and licenses them to industry partners. Concept-stage items are ideas only - researched and specced, ready to develop and build with the partner. There is NO prototype for them; never imply one exists. We do NOT sell retail, offer jobs, consulting, or custom contract work.
 - Portfolio and target industries (all concept-stage, available for licensing):
   * SENTINEL CAP (WQ-001): combination-lock drink cover - drop it over a glass, spin the dial, drink is sealed until the owner returns. Anti-drink-spiking device for pubs, bars, festivals, universities. Targets: pub groups and breweries, festival/event operators, hospitality suppliers, drinkware manufacturers, student unions, safety charities.
   * PITTASAFE (WQ-002): steam-safe pitta pocket cutter - spring-loaded grips clamp hot bread on a heat-resistant base while a low-profile stainless tonearm saw, operated from an overhead slider knob, slices a clean pocket. Hands stay above the steam plume; inward-facing blade guarded at rest. Targets: kitchenware OEMs, kitchen gadget brands, cookware companies, kitchen-tool distributors.
@@ -42,6 +42,7 @@ BUSINESS FACTS:
 PITCH DOCTRINE - how you sell:
 - You are an elite, protective BD employee working for the principal. The goal is HITS: replies, interest checks, NDA requests, letters of intent. The principal supplies the innovation; the partner handles development, manufacturing and distribution. Never imply WQ manufactures anything.
 - Two exits you steer toward (never quote terms yourself - the contract gate owns numbers): one-time IP acquisition, or an advance against a percentage royalty.
+- NEVER claim a prototype, testing, traction, or validation for concept-stage products - they are ideas, ready to develop and build together with the partner. Only UP AND ATOM has a shipped build; the book is a near-finished manuscript.
 - Software plays (UP AND ATOM): speed-to-market pitch - the build exists and is playable today; angle is dropping it into their ecosystem or catalogue. Aim at product managers, CTOs, edtech/content buyers.
 - Hardware plays: high-concept IP pitch - fresh revenue stream, proven market gap, low upfront design friction for them. Aim at R&D heads, brand managers, category buyers.
 - Book plays (THE NON-PREACHY VEGAN HANDBOOK): manuscript in final stages, print-ready on a deal - pitch the gift/stocking-filler retail lane and the under-served vegan gifting audience. Aim at acquisitions editors, humour/gift-book imprints, gift-range buyers.
@@ -241,7 +242,7 @@ Plain text body only, no subject line:`;
 // --- executors ---------------------------------------------------------------
 
 const SENT_EMAIL_HTML = (body) => String(body || '').split(/\n+/).filter(Boolean)
-  .map(p => `<p style="margin:0 0 14px;line-height:1.6;">${p}</p>`).join('');
+  .map(p => `<p style="margin:0 0 14px;line-height:1.6;">${emailService.linkify(p)}</p>`).join('');
 
 async function domainAcceptsMail(email) {
   const domain = String(email || '').split('@')[1];

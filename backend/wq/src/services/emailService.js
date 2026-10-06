@@ -25,10 +25,15 @@ const transporter = nodemailer.createTransport({
 const FROM_NAME = env.EMAIL_FROM_NAME || 'Williams Quantum';
 const FROM_ADDR = env.EMAIL_FROM || 'products@williamsquantum.com';
 
+// Turn bare URLs into clickable anchors in outgoing HTML emails.
+const linkify = (text) => String(text || '')
+  .replace(/(https?:\/\/[^\s<>"']+)/g,
+    '<a href="$1" style="color:#0e7490;text-decoration:underline;">$1</a>');
+
 async function sendAutoReply(recipientEmail, replyContent, subject) {
   const replyHtml = String(replyContent)
     .split(/\n{2,}/)
-    .map(para => `<p>${para.replace(/\n/g, '<br/>')}</p>`)
+    .map(para => `<p>${linkify(para).replace(/\n/g, '<br/>')}</p>`)
     .join('');
 
   const info = await transporter.sendMail({
@@ -87,4 +92,4 @@ async function verifyEmailConnection() {
   }
 }
 
-module.exports = { sendAutoReply, sendApprovalRequest, verifyEmailConnection, transporter, FROM_ADDR };
+module.exports = { sendAutoReply, sendApprovalRequest, verifyEmailConnection, transporter, FROM_ADDR, linkify };
