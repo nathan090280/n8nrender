@@ -64,7 +64,10 @@ const THEMES = [
   { from: '#7c3aed', to: '#db2777', fg: '#ffffff', sub: 'rgba(255,255,255,0.85)', accent: 'rgba(255,255,255,0.6)', brand: 'rgba(255,255,255,0.9)' },
   { from: '#0d9488', to: '#2563eb', fg: '#ffffff', sub: 'rgba(255,255,255,0.85)', accent: 'rgba(255,255,255,0.6)', brand: 'rgba(255,255,255,0.9)' },
   { from: '#1e293b', to: '#334155', fg: '#ffffff', sub: 'rgba(255,255,255,0.8)', accent: '#93c5fd', brand: 'rgba(255,255,255,0.9)' },
-  { from: '#f8fafc', to: '#e0e7ff', fg: '#1e293b', sub: 'rgba(30,41,59,0.75)', accent: '#7c3aed', brand: '#2563eb', light: true }
+  { from: '#f8fafc', to: '#e0e7ff', fg: '#1e293b', sub: 'rgba(30,41,59,0.75)', accent: '#7c3aed', brand: '#2563eb', light: true },
+  { from: '#f59e0b', to: '#dc2626', fg: '#ffffff', sub: 'rgba(255,255,255,0.85)', accent: 'rgba(255,255,255,0.6)', brand: 'rgba(255,255,255,0.9)' },
+  { from: '#059669', to: '#166534', fg: '#ffffff', sub: 'rgba(255,255,255,0.85)', accent: 'rgba(255,255,255,0.6)', brand: 'rgba(255,255,255,0.9)' },
+  { from: '#be123c', to: '#f97316', fg: '#ffffff', sub: 'rgba(255,255,255,0.85)', accent: 'rgba(255,255,255,0.6)', brand: 'rgba(255,255,255,0.9)' }
 ];
 
 function themeFor(text) {

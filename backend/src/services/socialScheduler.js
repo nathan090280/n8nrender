@@ -31,7 +31,7 @@ const TICK_MS = 60 * 1000;
 // Full pipeline: guide -> Claude -> card -> publish -> Firestore record.
 // Shared by the scheduler tick and the /api/webhooks/social-post endpoint.
 // `manual` mode skips generation: {captions:{...}, cardHeadline, cardSub} as-is.
-async function runPostJob({ platforms, topic, category, dryRun, manual } = {}) {
+async function runPostJob({ platforms, topic, category, dryRun, manual, themeIndex } = {}) {
   const post = manual || await contentEngine.generatePost({ topic, category });
 
   // Card media URLs point at the Render origin - platforms fetch the image
@@ -39,8 +39,9 @@ async function runPostJob({ platforms, topic, category, dryRun, manual } = {}) {
   // day-by-day (day-of-year mod palette count) so each post gets a new
   // colour - and it's baked into the URL so every platform sees the same
   // card whenever it fetches.
-  const themeIdx = Math.floor(Date.parse(londonNow().date) / 86400000)
-    % imageCardService.THEME_COUNT;
+  const themeIdx = Number.isInteger(themeIndex)
+    ? themeIndex % imageCardService.THEME_COUNT
+    : Math.floor(Date.parse(londonNow().date) / 86400000) % imageCardService.THEME_COUNT;
   const cardUrl = (ext) =>
     `https://superspeech-backend.onrender.com/public/media/card.${ext}?h=${encodeURIComponent(post.cardHeadline)}&s=${encodeURIComponent(post.cardSub || '')}&t=${themeIdx}`;
 
