@@ -73,7 +73,11 @@ async function pollOnce() {
         return;
       }
 
-      const uids = await client.search({ uid: `${lastUid + 1}:*` }, { uid: true }) || [];
+      // RFC 3501 quirk: "uid N:*" ALWAYS returns the mailbox's last message,
+      // even when N exceeds its UID. Without this filter the same tail
+      // message would be re-processed (and re-replied to) every poll forever.
+      const found = await client.search({ uid: `${lastUid + 1}:*` }, { uid: true }) || [];
+      const uids = found.filter(u => u > lastUid);
       for (const uid of uids) {
         const msg = await client.fetchOne(uid, { source: true }, { uid: true });
         if (!msg || !msg.source) { await setLastUid(uid); continue; }
