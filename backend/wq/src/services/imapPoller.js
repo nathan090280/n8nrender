@@ -106,7 +106,22 @@ async function pollOnce() {
           await setLastUid(uid);
           console.log('Processed inbound email from:', fromAddr);
         } catch (err) {
+          // ALWAYS advance past a failed message: processInboundEmail sends its
+          // reply mid-flow, so a throw after the send must not re-trigger it.
+          // Dead-letter the failure to agentActions for manual review instead
+          // of re-processing (and re-emailing) every poll cycle forever.
           console.error('Failed to process inbound email from', fromAddr, '-', err.message);
+          try {
+            await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+            await db.collection('agentActions').add({
+              date: new Date().toISOString().slice(0, 10),
+              type: 'imap_failed',
+              title: `Inbound email failed to process: ${fromAddr}`,
+              summary: `${parsed.subject || '(no subject)'} — ${err.message}`,
+              createdAt: new Date().toISOString()
+            });
+          } catch (_) { /* best-effort dead-letter */ }
+          await setLastUid(uid);
         }
       }
     } finally {

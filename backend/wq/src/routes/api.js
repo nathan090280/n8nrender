@@ -37,7 +37,7 @@ router.post('/contact', contactLimiter, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Valid name, email and message are required.' });
     }
 
-    const subject = `[Site enquiry] ${cName}${cCompany ? ` (${cCompany})` : ''} - ${cInterest || 'general'}`;
+    const subject = `Williams Quantum enquiry${cInterest && cInterest !== 'general' ? ` - ${cInterest}` : ''}`;
     const text = `Website contact form submission\n\nName: ${cName}\nEmail: ${cEmail}\nCompany: ${cCompany || '-'}\nInterest: ${cInterest || 'general'}\n\n${cMsg}`;
 
     const { processInboundEmail } = require('../services/inboundEmailService');
