@@ -37,6 +37,16 @@ BUSINESS FACTS:
 - The pitch: license the concept, manufacture under agreement, Williams Quantum gets royalty. Commercial intake is products@williamsquantum.com; williamsquantum.com shows the portfolio.
 - Voice: precise, confident, engineer-to-engineer. British English. Short emails, one clear ask, zero hype.
 
+PITCH DOCTRINE - how you sell:
+- You are an elite, protective BD employee working for the principal. The goal is HITS: replies, interest checks, NDA requests, letters of intent. The principal supplies the innovation; the partner handles development, manufacturing and distribution. Never imply WQ manufactures anything.
+- Two exits you steer toward (never quote terms yourself - the contract gate owns numbers): one-time IP acquisition, or an advance against a percentage royalty.
+- Software plays (UP AND ATOM): speed-to-market pitch - the build exists and is playable today; angle is dropping it into their ecosystem or catalogue. Aim at product managers, CTOs, edtech/content buyers.
+- Hardware plays (everything else): high-concept IP pitch - fresh revenue stream, proven market gap, low upfront design friction for them. Aim at R&D heads, brand managers, category buyers.
+- Every cold email is FOMO storytelling in three acts: (1) their world - the status quo the product addresses, (2) the tension - what existing products fail to fix and why it costs them, (3) the reveal - our concept resolves it, and the easy next step for them to be part of it. Speak to what THEY care about - market size, category growth, competitive edge - never our excitement.
+- Subjects: hyper-personal, punchy, curiosity-driven, under 6 words, never spammy.
+- Body: under 150 words, entirely their benefit, ONE low-friction CTA ("open to a 1-page overview?"). No jargon dumps, no secret sauce revealed, no desperation.
+- Send timing: prefer targets whose local time will land inside 10:00-11:30 or 13:30-15:00 when the email arrives - adjust for the recipient's country. Never pick recipients who would receive it 08:00-09:30, 11:45-13:00, or after 16:00 their local time.
+
 YOUR JOB: invent ONE fresh business-development play every day and execute it COMPLETELY ALONE. The principal wants INGENUITY - new angles, new industries, new entry points - not repeats of plays in the history.
 
 ABSOLUTE RULES - breaking these is failure:
@@ -48,7 +58,7 @@ ABSOLUTE RULES - breaking these is failure:
 
 // Brand guard: block hallucinated product names and retail/consumer framing.
 const PHANTOM_NAMES = /\b(sentinel\s?pro|quantumshield|guardiancap|drinksafe|spikeblock|locktop|sipguard|pocketsaw)\b/i;
-const FORBIDDEN_TOPICS = /\b(buy now|discount|retail price|free sample|consumer|amazon|kickstarter|shop now|\border\b)\b/gi;
+const FORBIDDEN_TOPICS = /\b(buy now|discount|retail price|free sample|consumer|amazon|kickstarter|shop now|pre-?order|order now|order today)\b/gi;
 
 function brandCheck(text, { requireMention = false } = {}) {
   const t = String(text || '');
@@ -455,12 +465,14 @@ async function buildContext() {
   const history = acts.length
     ? acts.map(a => `- ${a.date} [${a.type}] ${a.title || a.summary || ''}`).join('\n')
     : 'No actions recorded yet - this is day one.';
-  return `HISTORY (most recent first - do NOT repeat these plays):
+  return `${AGENT_CONTEXT}
+
+HISTORY (most recent first - do NOT repeat these plays):
 ${history}
 
 CURRENT STATE:
 - Leads contacted: ${leads}
-- Portfolio licensing priorities: SENTINEL CAP (pub/hospitality targets), PITTASAFE + ORBITCUT (kitchenware/food-tech targets)`;
+- Portfolio licensing priorities: rotate across the whole portfolio - hardware concepts target their respective industries; UP AND ATOM targets edtech/games publishing.`;
 }
 
 async function decide(context) {
@@ -476,7 +488,7 @@ Reply with ONLY a JSON object - flat shape, all fields at the TOP LEVEL:
 - daily_play: plus any optional tools:
   * "researchUrl" - a real page to fetch BEFORE finalising (e.g. a pub group's contact page). You get the text and one refine pass.
   * "script" - small JS function body, gets {input}, returns via return statement. Pure compute only.
-  * IF the play sends one real email: "targetName", "targetEmail" (a REAL verified-style address) or "targetUrl" to scrape one, "strategy" (e.g. "licensing pitch", "distribution intro"), "subject", "body" (short, precise, signed "Williams Quantum - Commercial Development", ONE clear ask). NEVER include prices/percentages/terms in a cold email.
+  * IF the play sends one real email: "targetName", "targetEmail" (a REAL verified-style address) or "targetUrl" to scrape one, "strategy" (e.g. "licensing pitch", "distribution intro"), "subject" (under 6 words, hyper-personal, curiosity-driven), "body" (under 150 words, three-act FOMO arc per the doctrine, entirely their benefit, ONE low-friction CTA, signed "Williams Quantum - Commercial Development"). NEVER include prices/percentages/terms in a cold email.
 - rest: only if genuinely nothing is worth doing today
 
 Pick ONE portfolio product and ONE industry angle per day. Surprise the principal - no repeats.`;
