@@ -41,5 +41,70 @@ services:
         value: https://superspeech.biz/dashboard
       - key: API_SECRET_KEY
         generateValue: true
+      # Everything below is managed in the Render dashboard - listed as
+      # sync:false so blueprint syncs NEVER delete them again (2026-10-06
+      # incident: API-triggered deploy wiped all social creds).
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: FIREBASE_CLIENT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: META_PAGE_TOKEN
+        sync: false
+      - key: FB_PAGE_ID
+        sync: false
+      - key: IG_USER_ID
+        sync: false
+      - key: THREADS_USER_ID
+        sync: false
+      - key: THREADS_ACCESS_TOKEN
+        sync: false
+      - key: MASTODON_INSTANCE
+        sync: false
+      - key: MASTODON_TOKEN
+        sync: false
+      - key: BSKY_HANDLE
+        sync: false
+      - key: BSKY_DID
+        sync: false
+      - key: BSKY_APP_PASSWORD
+        sync: false
+      - key: PINTEREST_APP_ID
+        sync: false
+      - key: PINTEREST_APP_SECRET
+        sync: false
+      - key: PINTEREST_ACCESS_TOKEN
+        sync: false
+      - key: PINTEREST_REFRESH_TOKEN
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USERNAME
+        sync: false
+      - key: REDDIT_PASSWORD
+        sync: false
+      - key: REDDIT_ALERT_FEEDS
+        sync: false
+      - key: APPROVER_EMAILS
+        sync: false
+      - key: BYPASS_PAYMENT_EMAILS
+        sync: false
+      - key: IMAP_HOST
+        sync: false
+      - key: ENABLE_IMAP_POLLING
+        sync: false
+      - key: MARKETING_AGENT_EMAIL
+        sync: false
     healthCheckPath: /health
     autoDeploy: true
