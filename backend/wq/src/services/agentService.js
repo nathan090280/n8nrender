@@ -421,7 +421,7 @@ Here is the actual text of the page you asked to research:
 ${pageText}
 ---
 
-Return the FINAL play as a JSON object - same fields. Use REAL facts from the page (a real published email beats a guessed one; if the page shows no usable contact, change the plan or drop the email). If the page was useless, say so in "summary" and adjust.`,
+Return the FINAL play as a JSON object - same fields. Use REAL facts from the page (a real published email beats a guessed one; if the page shows no usable contact, change the plan or drop the email). If this page did not yield the decision-maker, set "researchUrl" to the next most promising page on their site (team/contact/press/about) so we dig deeper - set it to "" when there is nowhere left worth digging. If the page was useless, say so in "summary" and adjust.`,
     { maxTokens: 1600, temperature: 0.7 });
   return extractJson(raw);
 }
@@ -488,11 +488,12 @@ function nextGoldenTime(tz) {
 
 // --- per-product planning -------------------------------------------------------
 
-async function planProductPlay(product, context) {
+async function planProductPlay(product, context, avoid = []) {
   const raw = await aiService.generateSocialCopy(`${context}
 
 TODAY'S ASSIGNMENT - product: ${product.name} (${product.id})
 ${product.brief}
+${avoid.length ? `Do NOT pick any of these companies (already tried today): ${avoid.join(', ')}.` : ''}
 
 Pick ONE real company (UK or USA preferred) in the right industry that has NOT been contacted before (check HISTORY). Then HUNT the real decision-maker - product acquisition, licensing, R&D head, brand/category director, senior buyer or acquisitions editor - a named senior person, not an info@ inbox. Dig as deep into the company's public structure as you can; supply "researchUrl" (their team/about/contact page) so the person and email can be verified on-site. If you already know a real published contact email, give it directly.
 Return ONLY a JSON object:
@@ -752,24 +753,34 @@ async function runDaily({ force = false } = {}) {
 
   try {
     for (const product of PRODUCTS) {
-      // Plan -> up to 2 research passes (team page, contact page) -> queue.
-      let draft = await planProductPlay(product, context).catch(e => {
-        console.error(`[Agent] plan failed for ${product.name}:`, e.message);
-        return null;
-      });
-      if (!draft) { plays.push({ product: product.name, scheduled: false, skipped: 'planning call failed' }); continue; }
+      // Up to 3 candidate companies per product; up to 3 research passes each.
+      let last = { product: product.name, scheduled: false, skipped: 'no plan' };
+      const avoid = [];
+      for (let attempt = 0; attempt < 3 && !last.scheduled; attempt++) {
+        let draft = await planProductPlay(product, context, avoid).catch(e => {
+          console.error(`[Agent] plan failed for ${product.name}:`, e.message);
+          return null;
+        });
+        if (!draft) { last.skipped = 'planning call failed'; continue; }
+        if (draft.targetCompany) avoid.push(draft.targetCompany);
 
-      for (let pass = 0; pass < 2 && draft.researchUrl; pass++) {
-        const pageText = await fetchResearchPage(draft.researchUrl);
-        if (!pageText) break;
-        const refined = await refineWithResearch(context, draft, pageText)
-          .catch(e => { console.warn('[Agent] refine pass failed:', e.message); return null; });
-        if (!refined) break;
-        draft = { ...draft, ...refined };
+        for (let pass = 0; pass < 3 && draft.researchUrl; pass++) {
+          const pageText = await fetchResearchPage(draft.researchUrl);
+          if (!pageText) break;
+          const refined = await refineWithResearch(context, draft, pageText)
+            .catch(e => { console.warn('[Agent] refine pass failed:', e.message); return null; });
+          if (!refined) break;
+          draft = { ...draft, ...refined };
+        }
+
+        const res = await queueProductPitch(product, draft)
+          .catch(e => ({ product: product.name, scheduled: false, skipped: e.message }));
+        if (!res.scheduled && draft.targetCompany) {
+          res.skipped = `${draft.targetCompany}: ${res.skipped}`;
+        }
+        last = res;
       }
-
-      plays.push(await queueProductPitch(product, draft)
-        .catch(e => ({ product: product.name, scheduled: false, skipped: e.message })));
+      plays.push(last);
     }
   } catch (e) {
     console.error('[Agent] batch run failed:', e.message);
