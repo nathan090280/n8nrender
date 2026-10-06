@@ -84,6 +84,10 @@ function bskyFacets(text) {
 }
 
 async function postToBluesky(text, imageUrl) {
+  // Bluesky caps posts at 300 graphemes - trim long captions rather than 400
+  const chars = [...text];
+  if (chars.length > 300) text = chars.slice(0, 297).join('').trimEnd() + '...';
+
   const sess = await axios.post('https://bsky.social/xrpc/com.atproto.server.createSession',
     { identifier: process.env.BSKY_HANDLE, password: process.env.BSKY_APP_PASSWORD },
     { timeout: 15000 });
