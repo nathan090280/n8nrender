@@ -37,7 +37,7 @@ YOUR JOB: invent ONE fresh marketing play every day and execute it COMPLETELY AL
 
 ABSOLUTE RULES - breaking these is failure:
 - Nathan does ZERO work. NEVER pick a play that needs him to do anything - no calls, no accounts to create, no forms, no approvals, no "flag what you need". If a great idea needs a human, DON'T PICK IT - pick one you can finish alone.
-- Nathan is NOT a product, speaker, coach, or expert and NEVER goes anywhere personally: no podcast guest pitches, no interviews, no workshops, no talks, no speeches, no "guest speaker" offers, no teaching, no training, nothing that requires him to appear, talk, or be the face of anything. You are selling a SERVICE, not a person.
+- Nathan is NOT a product, speaker, coach, expert, or interviewee and NEVER goes anywhere personally: NO podcasts (not as guest, host, or "topic"), NO interviews, NO media appearances, NO workshops/talks/speeches, NO expos or booths, nothing that requires him to appear, talk, be interviewed, or be the face/expert of anything - under ANY framing. Never "position Nathan" anywhere. You are selling a SERVICE, not a person. Plays that pitch people: partner REFERRALS, directory LISTINGS, direct SALES pitches, cross-promos - the product does the talking.
 - Emails you send come from hello@superspeech.biz about the service - never volunteer Nathan personally for anything.
 - You can NEVER change the website, its structure, the backend, pricing, packages, or any code/config.
 - Your tools are exactly: send ONE email, fetch ONE page for research, run ONE small script, and describe the play. Use them fully - a play you complete is worth ten you can't.
@@ -68,7 +68,7 @@ function daysOld(iso) {
 // a phantom name is an instant veto, and a cold pitch must mention us.
 const PHANTOM_NAMES = /\b(toastly|speechify|speecheasy|speechie|speechgenius|weddspeech|toastmaster\s?ai|vowcraft)\b/i;
 // Nathan is not a speaker, coach, or workshop leader - the agent keeps trying.
-const FORBIDDEN_TOPICS = /\b(workshop|webinar|seminar|lecture|class|course|2-hour|two-hour|half-day|full-day|one-hour|hour talk|speaking engagement|speech coach|wedding coach|speaking coach|guest speaker|keynote speaker|public speaker|deliver a talk|give a talk|speak at your|speak at our|speak to your|teach a|teach the|lead a session|run a session|host a session|presentation on|present a talk|wedding speaker)\b/gi;
+const FORBIDDEN_TOPICS = /\b(workshop|webinar|seminar|lecture|class|course|2-hour|two-hour|half-day|full-day|one-hour|hour talk|speaking engagement|speech coach|wedding coach|speaking coach|guest speaker|keynote speaker|public speaker|deliver a talk|give a talk|speak at your|speak at our|speak to your|teach a|teach the|lead a session|run a session|host a session|presentation on|present a talk|wedding speaker|podcast|interview|guest appearance|appear on|as a guest|guest episode|guest pitch|guest idea|guest spot|on the show|your show|radio|tv appearance|position.{0,15}nathan|nathan as|expert guest|media appearance|expo|trade show|vendor booth|booth)\b/gi;
 function brandCheck(text, { requireMention = false } = {}) {
   const t = String(text || '');
   const bad = t.match(PHANTOM_NAMES);
@@ -143,7 +143,7 @@ async function sendFollowupEmail(order) {
   const text = await aiService.generateSocialCopy(
     `Write a short follow-up email to a SuperSpeech customer.
 Customer first name: ${firstName}. Occasion: ${order.occasionType || 'their event'}. Package: ${order.package || ''}. Their speech was delivered ${Math.round(daysOld(order.createdAt))} days ago.
-Goals, in order: (1) ask how the speech went, warmly (2) remind them they still have free edits included if any line needs a tweak - reply to this email or use their dashboard (3) IF it went well, ask for a one-line testimonial we could use on the site.
+Goals, in order: (1) ask how the speech went (or how prep is going if their event is still ahead), warmly (2) ONLY mention free edits as an if-it-hasn't-happened-yet aside - e.g. "if the big day's still ahead and a line needs a tweak, free edits are included" - never push edits as if the speech is still to come (3) IF it went well, ask for a one-line testimonial we could use on the site.
 Keep it under 120 words, plain text, personal - like Nathan writing a quick note. Sign off as Nathan, SuperSpeech. No subject line, just the body.`,
     { maxTokens: 400, temperature: 0.7 });
 
