@@ -105,12 +105,16 @@ async function followupCandidates() {
     const snap = await db.collection('questionnaires')
       .orderBy('createdAt', 'desc').limit(150).get();
     const out = [];
+    const seenEmails = new Set();
     for (const doc of snap.docs) {
       const d = doc.data();
-      if (!d.email || !d.speechSent) continue;
+      if (!d.email || !d.speechSent || d.followupSentAt) continue;
+      const email = d.email.toLowerCase();
+      if (seenEmails.has(email)) continue; // one follow-up per customer, ever
       const age = daysOld(d.createdAt);
       if (age < FOLLOWUP_MIN_DAYS || age > FOLLOWUP_MAX_DAYS) continue;
-      if (await alreadyFollowedUp(doc.id, d.email)) continue;
+      if (await alreadyFollowedUp(doc.id, email)) continue;
+      seenEmails.add(email);
       out.push({ id: doc.id, ...d });
       if (out.length >= FOLLOWUP_MAX_PER_DAY) break;
     }
@@ -585,6 +589,10 @@ async function runFollowupSweep() {
   for (const order of candidates) {
     try {
       const res = await sendFollowupEmail(order);
+      // Stamp the order itself so no other questionnaire record for this
+      // customer can trigger another send, even if the actions log ages out.
+      await db.collection('questionnaires').doc(order.id)
+        .set({ followupSentAt: new Date().toISOString() }, { merge: true });
       await logAction({
         type: 'followup',
         title: `Follow-up to ${res.name}`,
