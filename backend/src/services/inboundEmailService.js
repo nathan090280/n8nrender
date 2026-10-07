@@ -137,11 +137,28 @@ async function processInboundEmail({ from, subject, text, html }) {
     return { approved: true };
   }
 
+  // Ping-pong guard: max one auto-reply per sender per 24h. Some mailboxes
+  // auto-answer every message they get - without this, two bots loop forever
+  // (this actually happened: 18 replies in ~40 min to one customer).
+  const fromAddr = senderEmail(from);
+  try {
+    const snap = await db.collection('emailInteractions')
+      .orderBy('createdAt', 'desc').limit(200).get();
+    const cutoff = Date.now() - 24 * 3600 * 1000;
+    const recentlyReplied = snap.docs.map(d => d.data()).some(x =>
+      x.replySent && senderEmail(x.from) === fromAddr
+      && Date.parse(x.createdAt || 0) > cutoff);
+    if (recentlyReplied) {
+      console.log('Skipping auto-reply to', fromAddr, '- already replied within 24h');
+      return { skipped: 'recently_replied' };
+    }
+  } catch (e) { console.warn('reply cooldown check failed:', e.message); }
+
   // If this sender is a marketing lead, the agent continues the actual
   // conversation (it knows what it pitched and every reply since) rather
   // than the generic support path.
   const { findLead, generateLeadReply, brandCheck } = require('./marketingAgentService');
-  const lead = await findLead(senderEmail(from)).catch(() => null);
+  const lead = await findLead(fromAddr).catch(() => null);
 
   let replyContent;
   if (lead) {
@@ -170,8 +187,10 @@ async function processInboundEmail({ from, subject, text, html }) {
     `Re: ${subject || 'Your SuperSpeech Inquiry'}`
   );
 
-  await trackLeadReply(from, subject, emailContent);
-
+  // Post-send bookkeeping must never throw back to the poller - if it did,
+  // the UID stays unprocessed and the same email gets replied to again on
+  // the next sweep (the resend loop).
+  await trackLeadReply(from, subject, emailContent).catch(() => {});
   await firebaseService.saveEmailInteraction({
     from,
     subject,
@@ -179,7 +198,7 @@ async function processInboundEmail({ from, subject, text, html }) {
     replyContent,
     replySent: true,
     emailMessageId: emailResult.messageId
-  });
+  }).catch(e => console.warn('interaction save failed (reply already sent):', e.message));
 
   return { replyContent, emailMessageId: emailResult.messageId };
 }
