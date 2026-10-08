@@ -36,8 +36,9 @@ BUSINESS FACTS:
   * VANLIFE STARTMATE (WQ-006): plug-and-play inline soft-starter for campervans and off-grid power - sits between a 240V inverter and a demanding appliance, ramps voltage over ~1.5-2.5s to cut startup inrush by a targeted ~60-70%, letting small budget inverters run compressor fridges, blenders and tools without tripping. ~800W continuous, fused UK plug in, child-safe socket out, tri-colour status LEDs, rugged aluminium shell, zero wiring. Targets: campervan/motorhome conversion companies, leisure-vehicle and caravan accessory brands, portable power station manufacturers, off-grid equipment OEMs and distributors.
   * THE NON-PREACHY VEGAN HANDBOOK (WQ-007, BOOK - manuscript in final stages, print-ready on a publishing deal): pocket-size humour gift book - 100 short, fun, practical vegan survival tips across 10 categories (kitchen hacks, accidentally-vegan products, wardrobe/bathroom stealth checks, family dinners, BBQs, conversation comebacks, workplace, dining out, travel, long-term thriving), every tip a tight Problem -> Solution page. Stocking-filler/gift-book format, zero lecturing. Targets: humour and gift-book publishers, acquisitions editors, illustrated/lifestyle imprints, gift and stationery ranges.
   * SPIDERSAFE (WQ-008): self-service bathtub spider rescue - a textured mini rope ladder on heavy-duty over-the-rim hooks; spiders climb out unaided, humans keep their distance. Viral-ready novelty gadget with genuine utility, ultra-low part count, flat-pack retail. Targets: novelty gadget brands, bathroom accessory lines, eco/wildlife-friendly product companies, giftware and own-brand housewares buyers.
+  * FLATRISE (WQ-009): kettle-powered dough proofing pad - hot-water-bottle technology re-engineered into a flat ~35x35cm pad; fill with boiling water, rest a baking tray or dough bowl on top, steady bottom warmth proofs dough 1-2 hours with zero electricity. Internal baffle grid keeps the surface level; rolls flat for storage. Targets: bakeware brands, kitchenware OEMs, housewares own-brand programmes, eco/low-energy product lines.
 - The pitch: license the concept, manufacture under agreement, Williams Quantum gets royalty. Commercial intake is products@williamsquantum.com; williamsquantum.com shows the portfolio.
-- Product page URLs (use in pitches): https://williamsquantum.com/products/sentinel-cap | /products/pittasafe | /products/orbitcut | /products/bathbuddy | /products/upandatom | /products/startmate | /products/veganhandbook | /products/spidersafe
+- Product page URLs (use in pitches): https://williamsquantum.com/products/sentinel-cap | /products/pittasafe | /products/orbitcut | /products/bathbuddy | /products/upandatom | /products/startmate | /products/veganhandbook | /products/spidersafe | /products/flatrise
 - Voice: precise, confident, engineer-to-engineer. British English. Short emails, one clear ask, zero hype.
 
 PITCH DOCTRINE - how you sell:
@@ -447,7 +448,9 @@ const PRODUCTS = [
   { id: 'WQ-007', name: 'THE NON-PREACHY VEGAN HANDBOOK', slug: 'veganhandbook',
     brief: 'Pocket-size humour gift book - 100 vegan survival tips, manuscript in final stages. Industries: humour/gift-book publishers, acquisitions editors, illustrated/lifestyle imprints, gift-range buyers.' },
   { id: 'WQ-008', name: 'SPIDERSAFE', slug: 'spidersafe',
-    brief: 'Self-service bathtub spider rescue - textured rope ladder on over-the-rim hooks. Industries: novelty gadget brands, bathroom accessory lines, eco/wildlife-friendly product companies, giftware and housewares buyers.' }
+    brief: 'Self-service bathtub spider rescue - textured rope ladder on over-the-rim hooks. Industries: novelty gadget brands, bathroom accessory lines, eco/wildlife-friendly product companies, giftware and housewares buyers.' },
+  { id: 'WQ-009', name: 'FLATRISE', slug: 'flatrise',
+    brief: 'Kettle-powered dough proofing pad - flat hot-water-bottle tech for cold-kitchen baking. Industries: bakeware brands, kitchenware OEMs, housewares own-brand programmes, eco/low-energy product lines.' }
 ];
 
 // --- recipient-local golden windows --------------------------------------------
