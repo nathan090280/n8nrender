@@ -35,8 +35,9 @@ BUSINESS FACTS:
   * UP AND ATOM (WQ-005, SHIPPED - playable at upandatom.netlify.app): educational chemistry browser game - collect subatomic particles, build elements, complete the periodic table, craft real molecules, global scoreboard. Targets: edtech platforms, game publishers, learning brands, curriculum providers.
   * VANLIFE STARTMATE (WQ-006): plug-and-play inline soft-starter for campervans and off-grid power - sits between a 240V inverter and a demanding appliance, ramps voltage over ~1.5-2.5s to cut startup inrush by a targeted ~60-70%, letting small budget inverters run compressor fridges, blenders and tools without tripping. ~800W continuous, fused UK plug in, child-safe socket out, tri-colour status LEDs, rugged aluminium shell, zero wiring. Targets: campervan/motorhome conversion companies, leisure-vehicle and caravan accessory brands, portable power station manufacturers, off-grid equipment OEMs and distributors.
   * THE NON-PREACHY VEGAN HANDBOOK (WQ-007, BOOK - manuscript in final stages, print-ready on a publishing deal): pocket-size humour gift book - 100 short, fun, practical vegan survival tips across 10 categories (kitchen hacks, accidentally-vegan products, wardrobe/bathroom stealth checks, family dinners, BBQs, conversation comebacks, workplace, dining out, travel, long-term thriving), every tip a tight Problem -> Solution page. Stocking-filler/gift-book format, zero lecturing. Targets: humour and gift-book publishers, acquisitions editors, illustrated/lifestyle imprints, gift and stationery ranges.
+  * SPIDERSAFE (WQ-008): self-service bathtub spider rescue - a textured mini rope ladder on heavy-duty over-the-rim hooks; spiders climb out unaided, humans keep their distance. Viral-ready novelty gadget with genuine utility, ultra-low part count, flat-pack retail. Targets: novelty gadget brands, bathroom accessory lines, eco/wildlife-friendly product companies, giftware and own-brand housewares buyers.
 - The pitch: license the concept, manufacture under agreement, Williams Quantum gets royalty. Commercial intake is products@williamsquantum.com; williamsquantum.com shows the portfolio.
-- Product page URLs (use in pitches): https://williamsquantum.com/products/sentinel-cap | /products/pittasafe | /products/orbitcut | /products/bathbuddy | /products/upandatom | /products/startmate | /products/veganhandbook
+- Product page URLs (use in pitches): https://williamsquantum.com/products/sentinel-cap | /products/pittasafe | /products/orbitcut | /products/bathbuddy | /products/upandatom | /products/startmate | /products/veganhandbook | /products/spidersafe
 - Voice: precise, confident, engineer-to-engineer. British English. Short emails, one clear ask, zero hype.
 
 PITCH DOCTRINE - how you sell:
@@ -444,7 +445,9 @@ const PRODUCTS = [
   { id: 'WQ-006', name: 'VANLIFE STARTMATE', slug: 'startmate',
     brief: 'Plug-and-play inline soft-starter for campervan/off-grid power. Industries: campervan/motorhome conversion companies, leisure-vehicle brands, portable power station makers, off-grid OEMs.' },
   { id: 'WQ-007', name: 'THE NON-PREACHY VEGAN HANDBOOK', slug: 'veganhandbook',
-    brief: 'Pocket-size humour gift book - 100 vegan survival tips, manuscript in final stages. Industries: humour/gift-book publishers, acquisitions editors, illustrated/lifestyle imprints, gift-range buyers.' }
+    brief: 'Pocket-size humour gift book - 100 vegan survival tips, manuscript in final stages. Industries: humour/gift-book publishers, acquisitions editors, illustrated/lifestyle imprints, gift-range buyers.' },
+  { id: 'WQ-008', name: 'SPIDERSAFE', slug: 'spidersafe',
+    brief: 'Self-service bathtub spider rescue - textured rope ladder on over-the-rim hooks. Industries: novelty gadget brands, bathroom accessory lines, eco/wildlife-friendly product companies, giftware and housewares buyers.' }
 ];
 
 // --- recipient-local golden windows --------------------------------------------
