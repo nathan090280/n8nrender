@@ -599,8 +599,7 @@ async function dispatchQueue() {
         to: q.targetEmail,
         subject: q.subject,
         text: String(q.body),
-        html: SENT_EMAIL_HTML(q.body),
-        bcc: OWNER_EMAIL
+        html: SENT_EMAIL_HTML(q.body)
       });
       await doc.ref.update({ status: 'sent', sentAt: new Date().toISOString() });
       await recordLead({
@@ -631,6 +630,42 @@ async function dispatchQueue() {
       }
     }
   }
+  await maybeSendDispatchDigest();
+}
+
+// --- consolidated send digest -----------------------------------------------------
+// Instead of a BCC per pitch, ONE email once today's queue is fully resolved -
+// every pitch with its full body, to the approver AND the WQ mailbox.
+
+async function maybeSendDispatchDigest() {
+  const today = londonNow().date;
+  let snap;
+  try { snap = await db.collection('sendQueue').get(); } catch { return; }
+  const items = snap.docs.map(d => d.data())
+    .filter(q => String(q.createdAt || '').slice(0, 10) === today);
+  if (!items.length || items.some(q => q.status === 'queued')) return;
+
+  const acts = await recentActions(20);
+  if (acts.some(a => a.date === today && a.type === 'dispatch_digest')) return;
+
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const sent = items.filter(q => q.status === 'sent');
+  const blocks = [`<p><b>Dispatch complete:</b> ${sent.length}/${items.length} pitches delivered.</p>`];
+  for (const q of items) {
+    blocks.push(`<div style="border-left:4px solid ${q.status === 'sent' ? '#16a34a' : '#dc2626'};padding:10px 14px;margin:14px 0;background:#f8fafc;">
+      <p style="margin:0 0 6px;"><b>${esc(q.product)}</b> → ${esc(q.targetCompany)} — ${esc(q.targetName || 'contact')} &lt;${esc(q.targetEmail)}&gt; <i>(${q.status}${q.error ? ': ' + esc(q.error) : ''})</i></p>
+      <p style="margin:0 0 6px;"><b>Subject:</b> ${esc(q.subject)}</p>
+      <div style="color:#334155;">${esc(q.body).replace(/\n/g, '<br>')}</div>
+    </div>`);
+  }
+
+  await emailService.transporter.sendMail({
+    from: `WQ Agent Core <${SELF}>`,
+    to: `${OWNER_EMAIL}, ${SELF}`,
+    subject: `[WQ Agent] Plays sent: ${sent.length}/${items.length} delivered`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;color:#1e293b;">${blocks.join('')}</div>`
+  });
+  await logAction({ type: 'dispatch_digest', title: `Digest sent: ${sent.length}/${items.length} delivered` });
 }
 
 // --- daily report ---------------------------------------------------------------
