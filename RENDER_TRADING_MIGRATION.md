@@ -6,8 +6,11 @@ both `ENABLE_TRADING_FLEET=true` and `TRADING_STATE_READY=true` are set.
 ## What it contains
 
 - The SuperSpeech Node service remains the public web process.
-- All ScalperBot services run as child processes in the same Render instance.
-- The bots share `/data` for SQLite, positions, and qualification state.
+- Grokky is the only order-placing bot. A dashboard-only main process reads
+  actual account totals and aggregates Grokky's status; its order-entry guard
+  is enforced in code.
+- Both Python processes share `/data` for SQLite, positions, and qualification
+  state.
 - The dashboard is proxied at `/trading`; its API remains protected by
   `DASHBOARD_USER` and `DASHBOARD_PASSWORD`.
 - The read-only collector is optional and defaults off.
@@ -52,14 +55,16 @@ both `ENABLE_TRADING_FLEET=true` and `TRADING_STATE_READY=true` are set.
    all child services and positions in `/trading` before considering the
    migration complete.
 
-Never run the VPS and Render trading fleets live at the same time. The
-collector's large research database is intentionally not migrated or started.
+Never run the VPS and Render trading fleets live at the same time. The other
+bot position files and collector's large research database are intentionally
+not migrated or started.
 
 ## Capacity note
 
-This Blueprint selects Render's Starter/512 MB plan. The combined Node service
-plus nine Python bot processes may exceed that memory limit. The Docker image
-could not be built in this workspace because the local Docker daemon is not
-running; do not arm the fleet until a staging deploy confirms startup and
-memory use. If it exceeds the plan, keep the fleet disabled and resize this
-single service rather than splitting bots into separate instances.
+This Blueprint selects Render's Starter/512 MB plan. Running Grokky plus the
+dashboard-only process is substantially lighter than running the whole fleet,
+and should be a much better fit. The Docker image could not be built in
+this workspace because the local Docker daemon is not running; keep trading
+disabled during the first Render deploy and confirm memory use before arming
+Grokky. If it exceeds the plan, resize this single service rather than
+splitting bots into separate instances.

@@ -15,8 +15,6 @@ services:
         value: "false"
       - key: TRADING_STATE_IMPORT_ENABLED
         value: "false"
-      - key: TRADING_BOT_MODE
-        value: live
       - key: TRADING_STATE_DIR
         value: /data
       - key: KUCOIN_API_KEY

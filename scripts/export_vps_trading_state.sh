@@ -32,17 +32,8 @@ src.close()
 
 names = [
     "qualification.json",
-    "qualification-new.json",
-    "qualification-claude.json",
-    "qualification-swing.json",
     "grokky_positions.json",
     "grokky_state.json",
-    "longshort_positions.json",
-    "longshort_positions.json.state",
-    "ranger_positions.json",
-    "ranger_state.json",
-    "short_positions.json",
-    "short_positions.json.state",
 ]
 for name in names:
     path = source / name

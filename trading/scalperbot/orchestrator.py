@@ -88,6 +88,8 @@ class Bot:
         self._kp2 = None                  # lazily built margin-key client
         self._margin_ts = 0.0
         self.bot_id = os.environ.get("BOT_NAME", "main")
+        self.dashboard_only = (
+            os.environ.get("TRADING_DASHBOARD_ONLY") == "true")
         self.rhythm_cands: list[dict] = []
         self.knife_cands: list[dict] = []
         self.knife_watch: set[str] = set()
@@ -1180,6 +1182,8 @@ class Bot:
             sig = signals.get(decision["target"])
             if not sig:
                 return
+            if self.dashboard_only:
+                return
             stop_dist = max(self.cfg.strategy.stop_loss_pct,
                             (sig.price - sig.stop_price) / sig.price * 100)
             # shared pool: check REAL free cash so two bots split naturally
@@ -1615,6 +1619,8 @@ class Bot:
         return ok
 
     async def _enter(self, sig, src="signal"):
+        if self.dashboard_only:
+            return "dashboard-only"
         if sig.is_stale(self.cfg.strategy.signal_max_age_ms, now_ms()):
             return "stale signal"
         if src.startswith("rhythm") and self.btc_1h_pct is not None and \

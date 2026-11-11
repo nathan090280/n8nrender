@@ -7,40 +7,7 @@ const STATE = process.env.TRADING_STATE_DIR || '/data';
 const PYTHON = process.env.TRADING_PYTHON || '/opt/venv/bin/python';
 const SHUTDOWN_GRACE_MS = 5000;
 
-const PEERS = [
-  '15m=http://127.0.0.1:8378',
-  'new=http://127.0.0.1:8379',
-  'claude=http://127.0.0.1:8380',
-  'claude15=http://127.0.0.1:8381',
-  'swing=http://127.0.0.1:8382',
-  'short=http://127.0.0.1:8383',
-  'ranger=http://127.0.0.1:8384',
-  'grokky=http://127.0.0.1:8385'
-].join(',');
-
-const orchestrators = [
-  { name: 'main', port: 8377, config: 'config.yaml' },
-  { name: '15m', port: 8378, config: 'config-15m.yaml' },
-  { name: 'new', port: 8379, config: 'config-new.yaml' },
-  { name: 'claude', port: 8380, config: 'config-claude.yaml' },
-  { name: 'claude15', port: 8381, config: 'config-claude15.yaml' },
-  { name: 'swing', port: 8382, config: 'config-swing.yaml' }
-];
-
-const standalone = [
-  { name: 'longshort', port: 8383, module: 'scalperbot.short_bot' },
-  { name: 'ranger', port: 8384, module: 'scalperbot.ranger_bot' },
-  { name: 'grokky', port: 8385, module: 'scalperbot.grokky_bot' }
-];
-
-const qualifications = {
-  main: 'qualification.json',
-  '15m': 'qualification.json',
-  new: 'qualification-new.json',
-  claude: 'qualification-claude.json',
-  claude15: 'qualification-claude.json',
-  swing: 'qualification-swing.json'
-};
+const GROKKY_PORT = 8385;
 
 const children = new Map();
 let stopping = false;
@@ -117,53 +84,28 @@ function start() {
   started = true;
   fs.mkdirSync(STATE, { recursive: true });
 
-  const common = {
-    BOT_MODE: process.env.TRADING_BOT_MODE || 'live',
-    DB_PATH: path.join(STATE, 'scalperbot.db'),
-    QUALIFICATION_FILE: path.join(STATE, 'qualification.json')
-  };
+  const dbPath = path.join(STATE, 'scalperbot.db');
+  startChild('dashboard', ['-u', 'main.py', 'run'], {
+    BOT_MODE: 'live',
+    BOT_NAME: 'main',
+    TRADING_DASHBOARD_ONLY: 'true',
+    CONFIG_PATH: path.join(ROOT, 'config-dashboard.yaml'),
+    DB_PATH: dbPath,
+    QUALIFICATION_FILE: path.join(STATE, 'qualification.json'),
+    DASHBOARD_PORT: '8377',
+    PEER_BOTS: `grokky=http://127.0.0.1:${GROKKY_PORT}`
+  });
 
-  for (const bot of orchestrators) {
-    startChild(bot.name, ['-u', 'main.py', 'run'], {
-      ...common,
-      BOT_NAME: bot.name,
-      CONFIG_PATH: path.join(ROOT, bot.config),
-      DASHBOARD_PORT: String(bot.port),
-      QUALIFICATION_FILE: path.join(
-        STATE, qualifications[bot.name] || 'qualification.json'),
-      PEER_BOTS: bot.name === 'main' ? PEERS : ''
-    });
-  }
-
-  for (const bot of standalone) {
-    const extra = {
-      ...common,
-      PORT: String(bot.port),
-      POS_PATH: path.join(STATE, `${bot.name}_positions.json`)
-    };
-    if (bot.name === 'longshort') {
-      extra.POS_PATH = path.join(STATE, 'longshort_positions.json');
-      extra.LIVE_LONG = process.env.TRADING_LIVE_LONG || '1';
-      extra.LIVE_SHORT = process.env.TRADING_LIVE_SHORT || '1';
-    } else if (bot.name === 'ranger') {
-      extra.POS_PATH = path.join(STATE, 'ranger_positions.json');
-      extra.LIVE = process.env.TRADING_RANGER_LIVE || '1';
-    } else {
-      extra.POS_PATH = path.join(STATE, 'grokky_positions.json');
-      extra.DAY_LOSS_CAP = process.env.GROKKY_DAY_LOSS_CAP || '-2.60';
-    }
-    startChild(bot.name, ['-u', '-m', bot.module], extra);
-  }
-
-  if (process.env.ENABLE_TRADING_COLLECTOR === 'true') {
-    startChild('collector', ['-u', '-m', 'scalperbot.collector'], {
-      DB_PATH: path.join(STATE, 'reservoir.db')
-    });
-  }
+  startChild('grokky', ['-u', '-m', 'scalperbot.grokky_bot'], {
+    DB_PATH: dbPath,
+    PORT: String(GROKKY_PORT),
+    POS_PATH: path.join(STATE, 'grokky_positions.json'),
+    DAY_LOSS_CAP: process.env.GROKKY_DAY_LOSS_CAP || '-2.60'
+  });
 
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
-  console.log('[trading] fleet processes launched on shared persistent state');
+  console.log('[trading] Grokky live; dashboard-only process cannot place orders');
 }
 
 function stop() {

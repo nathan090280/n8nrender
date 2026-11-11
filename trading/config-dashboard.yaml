@@ -1,0 +1,10 @@
+strategy:
+  gated_enabled: false
+  rhythm_enabled: false
+  knife_enabled: false
+execution:
+  mode: paper
+dashboard:
+  enabled: true
+  host: 127.0.0.1
+  port: 8377
