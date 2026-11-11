@@ -23,6 +23,7 @@ ALLOWED = {
     "ranger_state.json",
     "short_positions.json",
     "short_positions.json.state",
+    "wq-store.json",
 }
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
 
@@ -63,8 +64,8 @@ def main():
                 raise SystemExit("Archive contains an invalid SQLite database.")
             files[name] = base64.b64encode(content).decode("ascii")
 
-    if "scalperbot.db" not in files:
-        raise SystemExit("Archive does not contain scalperbot.db.")
+    if not ({"scalperbot.db", "wq-store.json"} & files.keys()):
+        raise SystemExit("Archive does not contain an importable state file.")
 
     payload = json.dumps({"files": files}).encode("utf-8")
     request = urllib.request.Request(

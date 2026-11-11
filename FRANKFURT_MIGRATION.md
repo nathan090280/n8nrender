@@ -19,8 +19,14 @@ blocked so it does not keep retrying rejected KuCoin requests.
    at `/data`.
 3. Copy the current SuperSpeech environment values from the Oregon service to
    the Frankfurt service. Do not copy old KuCoin credentials; add the newly
-   rotated key to both KuCoin variable groups. Keep all trading/import flags
-   false.
+   rotated key to both KuCoin variable groups. Copy the Williams Quantum
+   `WQ_*` settings too. The WQ API secret and mailbox password posted in chat
+   are exposed; rotate both before using them on Frankfurt. Use the new WQ
+   values in Oregon and Frankfurt during the overlap, and update any WQ client
+   that uses the old API secret.
+   Keep the new service's WQ job flags false while staging. Pinterest and
+   Reddit variables are omitted because you said those integrations are not
+   used. `PORT` is supplied by Render; do not add `PORT=8080`.
 4. Leave `ENABLE_SUPERSPEECH_JOBS=false` and both trading flags false while
    testing. Verify `/health` on the new service.
 5. Add `api.superspeech.biz` and `scalperbot-nath.duckdns.org` under the
@@ -40,7 +46,20 @@ blocked so it does not keep retrying rejected KuCoin requests.
    Remove-Item Env:TRADING_MIGRATION_TOKEN
    ```
 
-   After the upload succeeds, remove the token and set
+8. From the Oregon service's Render Shell, transfer the Williams Quantum store
+   file while the same temporary token is set in that shell:
+
+   ```sh
+   read -s -p "Frankfurt migration token: " TRADING_MIGRATION_TOKEN
+   export TRADING_MIGRATION_TOKEN
+   curl -fsSL https://raw.githubusercontent.com/nathan090280/n8nrender/frankfurt-migration/scripts/transfer_wq_store.js | node
+   unset TRADING_MIGRATION_TOKEN
+   ```
+
+   This sends the WQ JSON store over HTTPS; it does not print the store content.
+   Restart the Frankfurt service afterward so WQ loads `/data/wq-store.json`.
+   Keep WQ jobs off until cutover.
+9. After both imports succeed, remove `TRADING_MIGRATION_TOKEN` and set
    `TRADING_STATE_IMPORT_ENABLED=false`.
 
 ## Cut over
@@ -50,9 +69,11 @@ Once Frankfurt health, API calls, domains, and imported state are verified:
 1. Confirm the Netlify site, `api.superspeech.biz`, and Stripe webhook all point
    to Frankfurt. Keep the Oregon service available until these checks pass.
 2. Suspend the Oregon service to stop its email, Reddit, and social schedules.
-3. Enable `ENABLE_SUPERSPEECH_JOBS=true` on Frankfurt.
+3. Enable `ENABLE_SUPERSPEECH_JOBS=true`, `WQ_ENABLE_IMAP_POLLING=true`, and
+   `WQ_ENABLE_AGENT=true` on Frankfurt.
 4. Enable `TRADING_STATE_READY=true` and `ENABLE_TRADING_FLEET=true`.
-5. Verify Grokky and the dashboard at `https://scalperbot-nath.duckdns.org/`.
+5. Verify Williams Quantum, Grokky, and the dashboard at
+   `https://scalperbot-nath.duckdns.org/`.
 6. Keep Oregon suspended as rollback until the Frankfurt service is stable.
    Delete Oregon only after SuperSpeech users and integrations are confirmed
    working against Frankfurt.

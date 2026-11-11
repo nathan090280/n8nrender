@@ -66,8 +66,6 @@ services:
         sync: false
       - key: OPENHANDS_API_URL
         value: https://api.openhands.com/v1
-      - key: N8N_WEBHOOK_URL
-        generateValue: true
       - key: DASHBOARD_URL
         value: https://superspeech.biz/dashboard
       - key: API_SECRET_KEY
@@ -109,34 +107,36 @@ services:
         sync: false
       - key: BSKY_APP_PASSWORD
         sync: false
-      - key: PINTEREST_APP_ID
+      - key: WQ_API_SECRET_KEY
         sync: false
-      - key: PINTEREST_APP_SECRET
+      - key: WQ_APPROVER_EMAILS
         sync: false
-      - key: PINTEREST_ACCESS_TOKEN
+      - key: WQ_EMAIL_FROM
+        value: products@williamsquantum.com
+      - key: WQ_EMAIL_FROM_NAME
+        value: Williams Quantum
+      - key: WQ_EMAIL_HOST
+        value: mail.spacemail.com
+      - key: WQ_EMAIL_PORT
+        value: 587
+      - key: WQ_EMAIL_SECURE
+        value: "false"
+      - key: WQ_EMAIL_USER
         sync: false
-      - key: PINTEREST_REFRESH_TOKEN
+      - key: WQ_EMAIL_PASSWORD
         sync: false
-      - key: REDDIT_CLIENT_ID
-        sync: false
-      - key: REDDIT_CLIENT_SECRET
-        sync: false
-      - key: REDDIT_USERNAME
-        sync: false
-      - key: REDDIT_PASSWORD
-        sync: false
-      - key: REDDIT_ALERT_FEEDS
-        sync: false
-      - key: APPROVER_EMAILS
-        sync: false
-      - key: BYPASS_PAYMENT_EMAILS
-        sync: false
-      - key: IMAP_HOST
-        sync: false
-      - key: ENABLE_IMAP_POLLING
-        sync: false
-      - key: MARKETING_AGENT_EMAIL
-        sync: false
+      - key: WQ_IMAP_HOST
+        value: mail.spacemail.com
+      - key: WQ_IMAP_PORT
+        value: 993
+      - key: WQ_IMAP_POLL_INTERVAL_MS
+        value: 120000
+      - key: WQ_ENABLE_IMAP_POLLING
+        value: "false"
+      - key: WQ_ENABLE_AGENT
+        value: "false"
+      - key: WQ_STORE_FILE
+        value: /data/wq-store.json
     healthCheckPath: /health
     autoDeployTrigger: "off"
     disk:

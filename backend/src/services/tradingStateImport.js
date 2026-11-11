@@ -17,7 +17,8 @@ const ALLOWED = new Set([
   'ranger_positions.json',
   'ranger_state.json',
   'short_positions.json',
-  'short_positions.json.state'
+  'short_positions.json.state',
+  'wq-store.json'
 ]);
 
 function tokenMatches(received, expected) {
@@ -70,8 +71,10 @@ function handle(req, res) {
   try {
     const files = req.body && req.body.files;
     if (!files || typeof files !== 'object' || Array.isArray(files) ||
-        !files['scalperbot.db']) {
-      return res.status(400).json({ error: 'missing SQLite state database' });
+        (!files['scalperbot.db'] && !files['wq-store.json'])) {
+      return res.status(400).json({
+        error: 'provide scalperbot.db or wq-store.json'
+      });
     }
 
     const decoded = new Map();
