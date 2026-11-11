@@ -1,0 +1,145 @@
+services:
+  - type: web
+    name: superspeech-backend-frankfurt
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    branch: frankfurt-migration
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ENABLE_SUPERSPEECH_JOBS
+        value: "false"
+      - key: BACKEND_PUBLIC_URL
+        value: https://api.superspeech.biz
+      - key: TRADING_DASHBOARD_DOMAIN
+        value: scalperbot-nath.duckdns.org
+      - key: ENABLE_TRADING_FLEET
+        value: "false"
+      - key: TRADING_STATE_READY
+        value: "false"
+      - key: TRADING_STATE_IMPORT_ENABLED
+        value: "false"
+      - key: TRADING_STATE_DIR
+        value: /data
+      - key: KUCOIN_API_KEY
+        sync: false
+      - key: KUCOIN_API_SECRET
+        sync: false
+      - key: KUCOIN_API_PASSPHRASE
+        sync: false
+      - key: KUCOIN_API_KEY2
+        sync: false
+      - key: KUCOIN_API_SECRET2
+        sync: false
+      - key: KUCOIN_API_PASSPHRASE2
+        sync: false
+      - key: DASHBOARD_USER
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: TRADING_MIGRATION_TOKEN
+        sync: false
+      - key: RENDER_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        value: superspeech-e7bde
+      - key: FIREBASE_CLIENT_EMAIL
+        value: firebase-adminsdk-fbsvc@superspeech-e7bde.iam.gserviceaccount.com
+      - key: FIREBASE_DATABASE_URL
+        value: https://superspeech-e7bde.firebaseapp.com
+      - key: EMAIL_FROM
+        value: hello@superspeech.biz
+      - key: EMAIL_HOST
+        value: spacemail.com
+      - key: EMAIL_PORT
+        value: 587
+      - key: EMAIL_SECURE
+        value: false
+      - key: EMAIL_USER
+        value: hello@superspeech.biz
+      - key: EMAIL_PASSWORD
+        sync: false
+      - key: OPENHANDS_API_KEY
+        sync: false
+      - key: OPENHANDS_API_URL
+        value: https://api.openhands.com/v1
+      - key: N8N_WEBHOOK_URL
+        generateValue: true
+      - key: DASHBOARD_URL
+        value: https://superspeech.biz/dashboard
+      - key: API_SECRET_KEY
+        sync: false
+      # Everything below is managed in the Render dashboard - listed as
+      # sync:false so blueprint syncs NEVER delete them again (2026-10-06
+      # incident: API-triggered deploy wiped all social creds).
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: FIREBASE_CLIENT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: META_PAGE_TOKEN
+        sync: false
+      - key: FB_PAGE_ID
+        sync: false
+      - key: IG_USER_ID
+        sync: false
+      - key: THREADS_USER_ID
+        sync: false
+      - key: THREADS_ACCESS_TOKEN
+        sync: false
+      - key: MASTODON_INSTANCE
+        sync: false
+      - key: MASTODON_TOKEN
+        sync: false
+      - key: BSKY_HANDLE
+        sync: false
+      - key: BSKY_DID
+        sync: false
+      - key: BSKY_APP_PASSWORD
+        sync: false
+      - key: PINTEREST_APP_ID
+        sync: false
+      - key: PINTEREST_APP_SECRET
+        sync: false
+      - key: PINTEREST_ACCESS_TOKEN
+        sync: false
+      - key: PINTEREST_REFRESH_TOKEN
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USERNAME
+        sync: false
+      - key: REDDIT_PASSWORD
+        sync: false
+      - key: REDDIT_ALERT_FEEDS
+        sync: false
+      - key: APPROVER_EMAILS
+        sync: false
+      - key: BYPASS_PAYMENT_EMAILS
+        sync: false
+      - key: IMAP_HOST
+        sync: false
+      - key: ENABLE_IMAP_POLLING
+        sync: false
+      - key: MARKETING_AGENT_EMAIL
+        sync: false
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    disk:
+      name: superspeech-trading-state-frankfurt
+      mountPath: /data
+      sizeGB: 1

@@ -26,6 +26,8 @@ const TIP_HOUR = parseInt(process.env.TIP_HOUR || '10', 10);
 const NEWSLETTER_DAY = process.env.NEWSLETTER_DAY || 'Sun';
 const NEWSLETTER_HOUR = parseInt(process.env.NEWSLETTER_HOUR || '19', 10);
 const NEWSLETTER_MINUTE = parseInt(process.env.NEWSLETTER_MINUTE || '0', 10);
+const BACKEND_PUBLIC_URL = (process.env.BACKEND_PUBLIC_URL ||
+  'https://superspeech-backend.onrender.com').replace(/\/+$/, '');
 const TICK_MS = 60 * 1000;
 
 // Full pipeline: guide -> Claude -> card -> publish -> Firestore record.
@@ -43,7 +45,7 @@ async function runPostJob({ platforms, topic, category, dryRun, manual, themeInd
     ? themeIndex % imageCardService.THEME_COUNT
     : Math.floor(Date.parse(londonNow().date) / 86400000) % imageCardService.THEME_COUNT;
   const cardUrl = (ext) =>
-    `https://superspeech-backend.onrender.com/public/media/card.${ext}?h=${encodeURIComponent(post.cardHeadline)}&s=${encodeURIComponent(post.cardSub || '')}&t=${themeIdx}`;
+    `${BACKEND_PUBLIC_URL}/public/media/card.${ext}?h=${encodeURIComponent(post.cardHeadline)}&s=${encodeURIComponent(post.cardSub || '')}&t=${themeIdx}`;
 
   const wanted = platforms && platforms.length ? platforms
     : Object.keys(socialPostService.POSTERS);

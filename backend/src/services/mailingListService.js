@@ -2,7 +2,8 @@ const crypto = require('crypto');
 const emailService = require('./emailService');
 const firebaseService = require('./firebaseService');
 
-const BACKEND_URL = process.env.N8N_WEBHOOK_URL || 'https://superspeech-backend.onrender.com';
+const BACKEND_URL = (process.env.BACKEND_PUBLIC_URL ||
+  'https://superspeech-backend.onrender.com').replace(/\/+$/, '');
 
 // Signed unsubscribe tokens so a link can't be used to unsubscribe
 // arbitrary strangers - the token proves the link came from us.

@@ -110,6 +110,11 @@ app.all(TRADING_API_PATHS, (req, res) =>
 app.post('/api/internal/trading-state/import', tradingStateImport.handle);
 
 app.get('/', (req, res) => {
+  const tradingDomain = (process.env.TRADING_DASHBOARD_DOMAIN || '')
+    .toLowerCase();
+  if (tradingDomain && req.hostname.toLowerCase() === tradingDomain) {
+    return proxyTradingDashboard(req, res, '/');
+  }
   res.json({
     name: 'SuperSpeech Backend API',
     version: '1.0.0',
@@ -359,14 +364,15 @@ async function startServer() {
         console.warn('Stale speech sweep failed:', err.message));
     }, 60 * 1000);
 
-    // Poll the Spacemail inbox for unread customer emails and auto-reply
-    imapPoller.start();
-
-    // Watch Reddit for speech-help posts; drafts replies + emails Nathan
-    redditListener.start();
-
-    // Daily branded card post to all connected socials at 18:00 UK
-    socialScheduler.start();
+    if (process.env.ENABLE_SUPERSPEECH_JOBS !== 'false') {
+      // Keep the old Oregon instance's background work off during Frankfurt
+      // staging so emails and scheduled posts cannot run twice.
+      imapPoller.start();
+      redditListener.start();
+      socialScheduler.start();
+    } else {
+      console.log('SuperSpeech background jobs disabled for staged cutover');
+    }
 
     app.listen(PORT, '0.0.0.0', () => {
       tradingFleet.start();
