@@ -89,29 +89,56 @@ function handle(req, res) {
     }
 
     fs.mkdirSync(DATA_DIR, { recursive: true });
+    const nonce = crypto.randomBytes(8).toString('hex');
+    const existing = new Set();
     for (const name of decoded.keys()) {
       const target = path.join(DATA_DIR, name);
-      if (fs.existsSync(target)) {
-        return res.status(409).json({
-          error: 'state disk is not empty; refusing to overwrite',
-          file: name
-        });
+      if (fs.existsSync(target)) existing.add(name);
+    }
+
+    // Preserve every pre-existing target before replacing it with the
+    // explicitly uploaded snapshot. This makes retries recoverable without
+    // silently destroying any files already on the persistent disk.
+    let backupDirectory = null;
+    if (existing.size) {
+      backupDirectory = path.join(DATA_DIR, `pre-import-${Date.now()}-${nonce}`);
+      fs.mkdirSync(backupDirectory, { mode: 0o700 });
+      for (const name of existing) {
+        fs.copyFileSync(
+          path.join(DATA_DIR, name),
+          path.join(backupDirectory, name),
+          fs.constants.COPYFILE_EXCL
+        );
       }
     }
 
-    const nonce = crypto.randomBytes(8).toString('hex');
     const staged = [];
+    const installed = [];
     try {
       for (const [name, bytes] of decoded) {
         const temp = path.join(DATA_DIR, `.${name}.${nonce}.tmp`);
         fs.writeFileSync(temp, bytes, { flag: 'wx', mode: 0o600 });
-        staged.push([temp, path.join(DATA_DIR, name)]);
+        staged.push([name, temp, path.join(DATA_DIR, name)]);
       }
-      for (const [temp, target] of staged) {
+      for (const [name, temp, target] of staged) {
         fs.renameSync(temp, target);
+        installed.push(name);
       }
     } catch (error) {
-      for (const [temp] of staged) {
+      for (const [name] of staged) {
+        const target = path.join(DATA_DIR, name);
+        try {
+          if (installed.includes(name)) {
+            if (existing.has(name)) {
+              fs.copyFileSync(
+                path.join(backupDirectory, name), target);
+            } else {
+              fs.unlinkSync(target);
+            }
+          }
+        } catch (_) { /* retain the backup for manual recovery */ }
+      }
+      for (const [, temp] of staged) {
         try { fs.unlinkSync(temp); } catch (_) { /* partial import cleanup */ }
       }
       throw error;
@@ -123,6 +150,9 @@ function handle(req, res) {
     return res.json({
       ok: true,
       files: Array.from(decoded.keys()),
+      backupDirectory: backupDirectory
+        ? path.basename(backupDirectory)
+        : null,
       bytes: total
     });
   } catch (error) {
