@@ -1,0 +1,57 @@
+# Claude 15m: same engine as Claude 1m with swing-scale parameters
+# (PROFILES["15min"] in scalperbot/claude_bot.py).
+qualification_file: state/qualification-claude.json
+market:
+  quote_currency: USDT
+  base_url: https://api.kucoin.com
+  scan_interval_sec: 60
+  top_candidates: 10
+  candle_interval: 15min
+  history_limit: 240
+  watchlist: []
+  blacklist: []
+  min_24h_quote_volume: 500000
+  max_spread_pct: 0.10
+  min_history_candles: 80
+  stale_data_ms: 60000
+
+strategy:
+  claude_enabled: true
+  gated_enabled: false
+  rhythm_enabled: false
+  knife_enabled: false
+  new_enabled: false
+  max_taker_fee_pct: 0.2
+  stop_loss_pct: 0.5          # floor only; Claude's real stop is structural/ATR R
+  time_exit_sec: 14400        # 4h: exit if not at least +0.2% and ladder not armed
+  time_exit_gain_pct: 0.2
+  max_hold_sec: 129600        # 36h hard cap; the R-ladder rides moons until then
+  signal_max_age_ms: 20000
+  loss_cooldown_sec: 3600
+
+risk:
+  starting_capital: 18.0      # paper pot sized like the real account
+  allocation_pct: 100.0
+  max_position_pct: 90.0
+  max_risk_per_trade_pct: 0.4   # planned stop loss incl. costs = 0.4% of equity
+  max_risk_pct: null
+  max_daily_loss_pct: 4.0
+  max_drawdown_pct: 8.0
+  max_consecutive_losses: 3
+  cooldown_min: 60
+  max_trades_per_day: 12
+  max_open_positions: 2
+  emergency_file: state/HALT-claude15
+
+execution:
+  mode: live                  # operator-promoted to live (also .env BOT_MODE=live)
+  taker_fee_pct: 0.1
+  maker_fee_pct: 0.1
+  slippage_bps: 5.0
+  order_timeout_sec: 10
+  reconcile_interval_sec: 60
+
+dashboard:
+  enabled: true
+  host: 127.0.0.1
+  port: 8377

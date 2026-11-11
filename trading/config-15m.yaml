@@ -1,0 +1,91 @@
+# ============================================================
+#  ScalperBot-15m - the swing twin. Same rules, wider lens.
+#  Trades dip-and-rip on 15-minute bars; holds minutes-to-hours.
+#  Shares the account with the main bot via allocation_pct.
+# ============================================================
+
+market:
+  quote_currency: USDT
+  base_url: https://api.kucoin.com
+  scan_interval_sec: 60         # re-rank every minute (slower timeframe)
+  top_candidates: 5
+  candle_interval: 15min        # THE scope change: 15-minute bars
+  history_limit: 340            # ~3.5 days of bars kept
+  watchlist: []
+  blacklist: []
+  min_24h_quote_volume: 150000
+  max_spread_pct: 0.15
+  min_history_candles: 60       # = 15 hours of context
+  stale_data_ms: 60000          # 15m data is inherently slower
+
+strategy:
+  vol_spike_factor: 1.4         # 15m vol changes are smoother; slightly lower bar
+  atr_min_pct: 1.0              # OR: always-volatile coins qualify if 15m swings >= this %
+  rhythm_enabled: false          # PATH 3: buy the bottom of a peak-trough range
+  gated_enabled: false          # PATH 1-2: disabled while rhythm is evaluated
+  knife_enabled: false           # PATH 4: completed-crash-candle + tight stop
+  knife_drop_pct: 10.0          # single-candle body drop = the knife itself
+  min_bull_pct: 0.08            # experimental completed 15m bull bar minimum
+  rhythm_shock_btc_1h_pct: -0.8  # BTC panic -> bull check relaxes (Nov4 mode)
+  max_taker_fee_pct: 0.2        # refuse symbols charging more per side
+  rhythm_min_range_atr: 2.0     # range must be this many typical swings wide
+  rhythm_min_pivots: 3          # needs this many peaks AND troughs to count
+  rhythm_zone_pct: 0.35         # buy only in the bottom 35% of the range
+  rhythm_window_bars_15m: 48    # 12h history; recent trough/peak rules unchanged
+  rhythm_max_roundtrip_cost_pct: 0.45
+  rhythm_realistic_reward_risk: 0.6
+  rhythm_trail_steps: [[0.9, 0.45], [1.8, 0.25], [3, 0.4], [5, 0.6], [10, 1.0]]
+  rhythm_max_stop_pct: 2.0      # 15m wider swings, but no massive trough stops
+  rhythm_min_path_pct: 3.0      # second moon rung should be reachable after costs
+  rhythm_min_reward_risk: 1.25  # net upside / (stop distance + exit costs)
+  ema_fast: 9                   # ~2.25 hours
+  ema_slow: 21                  # ~5.25 hours
+  atr_period: 14
+  pullback_min_atr: 0.8
+  pullback_max_atr: 3.5
+  pullback_max_pct: 6.0         # wider net for bigger 15m swings
+  extended_move_pct: 12.0       # 15m runs are bigger too
+  reversal_min_buy_ratio: 0.55
+  reversal_min_imbalance: 0.05  # order book must lean bid-side by at least this much
+  reversal_lookback_sec: 120    # buying pressure over last 2 min
+  expected_profit_min_pct: 0.60 # still must clear costs with margin
+  take_profit_pct: 2.0          # bigger swings -> bigger targets
+  stop_loss_pct: 1.0            # wider stop for wider swings
+  trail_activate_pct: 0.8
+  trail_steps: [[0.9, 0.25], [3, 0.4], [5, 0.6], [10, 1.0]]  # gain%: giveback%
+  trail_offset_pct: 0.5
+  time_exit_sec: 7200           # flat after 2h if not developed
+  max_hold_sec: 21600           # never hold past 6h
+  signal_max_age_ms: 60000      # signals stay fresh longer on this timeframe
+  switch_advantage_factor: 1.6
+  switch_min_hold_sec: 900      # min 15min in a position before switching
+  switch_cooldown_sec: 1800     # switches are expensive here; limit churn
+
+risk:
+  starting_capital: 1000.0      # ignored in live mode (real balance used)
+  allocation_pct: 45.0          # P&L accounting share only - sizing can reach the whole free pot
+  max_position_pct: 45.0        # of ITS 45% share -> ~20% of account/trade
+  max_risk_per_trade_pct: 2.0
+  max_risk_pct: 0.45            # planned loss cap ~0.45% of equity (~8c on $18)
+  max_daily_loss_pct: 50.0
+  max_drawdown_pct: 25.0
+  max_consecutive_losses: 4
+  cooldown_min: 30
+  max_trades_per_day: 40        # fewer, meatier trades
+  max_open_positions: 2
+  emergency_file: state/HALT-15m    # per-bot halt file (STOP ALL writes both)
+
+execution:
+  mode: paper                   # inherits BOT_MODE=live from env on server
+  taker_fee_pct: 0.1
+  maker_fee_pct: 0.1
+  slippage_bps: 5.0
+  order_timeout_sec: 10
+  reconcile_interval_sec: 60
+
+dashboard:
+  enabled: true
+  host: 127.0.0.1
+  port: 8377                    # inside container; host port 8378 maps to it
+
+notify_webhook: ""

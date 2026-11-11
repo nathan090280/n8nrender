@@ -1,0 +1,58 @@
+# Claude 1m: regime-gated breakout-continuation scalper. Own signal engine
+# (scalperbot/claude_bot.py); shares spot execution, fills, persisted stops
+# and SQLite symbol locks with the other services.
+qualification_file: state/qualification-claude.json
+market:
+  quote_currency: USDT
+  base_url: https://api.kucoin.com
+  scan_interval_sec: 20
+  top_candidates: 10
+  candle_interval: 1min
+  history_limit: 240
+  watchlist: []
+  blacklist: []
+  min_24h_quote_volume: 1000000
+  max_spread_pct: 0.08
+  min_history_candles: 80
+  stale_data_ms: 15000
+
+strategy:
+  claude_enabled: false
+  gated_enabled: false
+  rhythm_enabled: false
+  knife_enabled: false
+  new_enabled: false
+  max_taker_fee_pct: 0.2
+  stop_loss_pct: 0.3          # floor only; Claude's real stop is structural/ATR R
+  time_exit_sec: 900          # 15m: exit if not at least +0.1% and ladder not armed
+  time_exit_gain_pct: 0.1
+  max_hold_sec: 10800         # 3h hard cap; the R-ladder rides moons until then
+  signal_max_age_ms: 5000
+  loss_cooldown_sec: 900
+
+risk:
+  starting_capital: 18.0      # paper pot sized like the real account
+  allocation_pct: 100.0
+  max_position_pct: 90.0        # never more than 90% of the pot in one trade
+  max_risk_per_trade_pct: 0.35  # planned stop loss incl. costs = 0.35% of equity
+  max_risk_pct: null
+  max_daily_loss_pct: 4.0
+  max_drawdown_pct: 8.0
+  max_consecutive_losses: 3
+  cooldown_min: 30
+  max_trades_per_day: 30
+  max_open_positions: 2
+  emergency_file: state/HALT-claude
+
+execution:
+  mode: live                  # operator-promoted to live (also .env BOT_MODE=live)
+  taker_fee_pct: 0.1
+  maker_fee_pct: 0.1
+  slippage_bps: 5.0
+  order_timeout_sec: 10
+  reconcile_interval_sec: 60
+
+dashboard:
+  enabled: true
+  host: 127.0.0.1
+  port: 8377

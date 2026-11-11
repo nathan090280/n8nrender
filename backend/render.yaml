@@ -1,16 +1,42 @@
 services:
   - type: web
     name: superspeech-backend
-    env: node
+    env: docker
     region: oregon
-    plan: free
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 8080
+      - key: ENABLE_TRADING_FLEET
+        value: "false"
+      - key: TRADING_STATE_READY
+        value: "false"
+      - key: TRADING_STATE_IMPORT_ENABLED
+        value: "false"
+      - key: TRADING_BOT_MODE
+        value: live
+      - key: TRADING_STATE_DIR
+        value: /data
+      - key: KUCOIN_API_KEY
+        sync: false
+      - key: KUCOIN_API_SECRET
+        sync: false
+      - key: KUCOIN_API_PASSPHRASE
+        sync: false
+      - key: KUCOIN_API_KEY2
+        sync: false
+      - key: KUCOIN_API_SECRET2
+        sync: false
+      - key: KUCOIN_API_PASSPHRASE2
+        sync: false
+      - key: DASHBOARD_USER
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: TRADING_MIGRATION_TOKEN
+        sync: false
       - key: RENDER_API_KEY
         sync: false
       - key: FIREBASE_PROJECT_ID
@@ -108,3 +134,7 @@ services:
         sync: false
     healthCheckPath: /health
     autoDeploy: true
+    disk:
+      name: superspeech-trading-state
+      mountPath: /data
+      sizeGB: 1

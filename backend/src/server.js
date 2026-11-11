@@ -14,6 +14,8 @@ const firebaseService = require('./services/firebaseService');
 const imapPoller = require('./services/imapPoller');
 const redditListener = require('./services/redditListener');
 const socialScheduler = require('./services/socialScheduler');
+const tradingFleet = require('./services/tradingFleet');
+const tradingStateImport = require('./services/tradingStateImport');
 const axios = require('axios');
 const { db } = require('./config/firebase');
 
@@ -40,9 +42,72 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
+  skip: req => [
+    '/api/state', '/api/fleet', '/api/history', '/api/perf',
+    '/api/analyze', '/api/ask', '/api/fleet/risk', '/api/fleet/halt',
+    '/api/path', '/api/fleet/resume', '/api/close', '/api/risk'
+  ].includes(req.originalUrl.split('?')[0]),
   message: 'Too many requests from this IP, please try again later.'
 });
 app.use('/api/', limiter);
+
+const TRADING_API_PATHS = [
+  '/api/state', '/api/fleet', '/api/history', '/api/perf',
+  '/api/analyze', '/api/ask', '/api/fleet/risk', '/api/fleet/halt',
+  '/api/path', '/api/fleet/resume', '/api/close', '/api/risk'
+];
+
+async function proxyTradingDashboard(req, res, targetPath) {
+  if (process.env.ENABLE_TRADING_FLEET !== 'true') {
+    return res.status(503).json({
+      error: 'Trading fleet is not enabled on this service'
+    });
+  }
+  try {
+    const headers = {};
+    if (req.headers.authorization) {
+      headers.authorization = req.headers.authorization;
+    }
+    if (req.headers['content-type']) {
+      headers['content-type'] = req.headers['content-type'];
+    }
+    const options = { method: req.method, headers };
+    if (!['GET', 'HEAD'].includes(req.method)) {
+      options.body = JSON.stringify(req.body || {});
+    }
+    const upstream = await fetch(
+      `http://127.0.0.1:8377${targetPath}`, options);
+    res.status(upstream.status);
+    if ((upstream.headers.get('content-type') || '').includes('text/html')) {
+      // The existing dashboard uses inline JS/CSS; scope that policy override
+      // to this authenticated route instead of weakening SuperSpeech pages.
+      res.set(
+        'Content-Security-Policy',
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+          "style-src 'self' 'unsafe-inline'; connect-src 'self'; " +
+          "img-src 'self' data:"
+      );
+    }
+    for (const name of ['content-type', 'www-authenticate', 'cache-control']) {
+      const value = upstream.headers.get(name);
+      if (value) res.set(name, value);
+    }
+    return res.send(Buffer.from(await upstream.arrayBuffer()));
+  } catch (err) {
+    console.error('Trading dashboard proxy failed:', err.message);
+    return res.status(503).json({ error: 'Trading dashboard unavailable' });
+  }
+}
+
+app.get(['/trading', '/trading/', '/trading/*'], (req, res) => {
+  const suffix = req.path.replace(/^\/trading/, '') || '/';
+  return proxyTradingDashboard(req, res, suffix);
+});
+
+app.all(TRADING_API_PATHS, (req, res) =>
+  proxyTradingDashboard(req, res, req.originalUrl));
+
+app.post('/api/internal/trading-state/import', tradingStateImport.handle);
 
 app.get('/', (req, res) => {
   res.json({
@@ -304,6 +369,7 @@ async function startServer() {
     socialScheduler.start();
 
     app.listen(PORT, '0.0.0.0', () => {
+      tradingFleet.start();
       console.log(`
 ╔══════════════════════════════════════════╗
 ║   SuperSpeech Backend Server Running    ║

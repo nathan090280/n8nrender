@@ -1,0 +1,66 @@
+# Chatty: independent 1m momentum/pullback strategy; shares spot execution
+# and the SQLite symbol locks with the other services.
+qualification_file: state/qualification-new.json
+market:
+  quote_currency: USDT
+  base_url: https://api.kucoin.com
+  scan_interval_sec: 20
+  top_candidates: 10
+  candle_interval: 1min
+  history_limit: 120
+  watchlist: []
+  blacklist: []
+  min_24h_quote_volume: 500000
+  max_spread_pct: 0.08
+  min_history_candles: 60
+  stale_data_ms: 10000
+
+strategy:
+  new_enabled: false
+  new_min_trend30_pct: 0.3
+  new_min_range10_pct: 0.8
+  new_min_uptick_pct: 0.08    # forming candle must be lifting now, not flat
+  new_persist_cycles: 2       # setup must survive 2 scan cycles (~10s)
+  new_btc_lookback_h: 6        # BTC veto window (was 12h)
+  new_min_btc_regime_pct: -5.0 # veto only on a big dump: BTC fell >5% in 6h
+  new_min_btc_1h_pct: 0.2      # momentum gate: BTC 1h must be >= +0.2% to enter
+  gated_enabled: false
+  rhythm_enabled: false
+  knife_enabled: false
+  max_taker_fee_pct: 0.2
+  stop_loss_pct: 1.0
+  trail_steps: [[1.3, 0.25], [2.5, 0.4], [4, 0.6]]
+  time_exit_sec: 600
+  time_exit_gain_pct: 0.0   # flat-timer cuts reds only; greens run to max_hold
+  new_momentum_hold: true   # confirmed bull run suspends the red time-exit
+  new_runner_enabled: true  # buy-strength entries on confirmed runs
+  max_hold_sec: 3600
+  signal_max_age_ms: 5000
+  loss_cooldown_sec: 300
+
+risk:
+  starting_capital: 1000.0
+  allocation_pct: 100.0
+  max_position_pct: 90.0
+  max_risk_per_trade_pct: 1.0
+  max_risk_pct: 0.8     # planned-loss cap 0.8% of equity (~15c on $18)
+  max_daily_loss_pct: 5.0
+  max_drawdown_pct: 10.0
+  max_consecutive_losses: 4
+  cooldown_min: 30
+  max_trades_per_day: 100
+  max_open_positions: 4
+  emergency_file: state/HALT-new
+
+execution:
+  mode: live
+  taker_fee_pct: 0.1
+  maker_fee_pct: 0.1
+  slippage_bps: 5.0
+  order_timeout_sec: 10
+  reconcile_interval_sec: 60
+
+dashboard:
+  enabled: true
+  host: 127.0.0.1
+  port: 8377

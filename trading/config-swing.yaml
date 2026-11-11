@@ -1,0 +1,83 @@
+# Swing Structure Trading Bot: 1h reversal-swing engine, 4h confirmation.
+# Own signal engine (scalperbot/swing_bot.py); shares spot execution,
+# fills, persisted stops, symbol locks and the shared account with the
+# other services. Deployed PAPER first (spec: backtest+paper before live).
+qualification_file: state/qualification-swing.json
+market:
+  quote_currency: USDT
+  base_url: https://api.kucoin.com
+  scan_interval_sec: 60
+  top_candidates: 12
+  candle_interval: 1hour
+  history_limit: 160
+  watchlist: []
+  blacklist: []
+  min_24h_quote_volume: 400000
+  max_spread_pct: 0.15
+  min_history_candles: 140
+  stale_data_ms: 90000            # 1h feeds tick slower than the scalpers
+  min_listing_age_days: 7
+
+strategy:
+  swing_enabled: false
+  gated_enabled: false
+  rhythm_enabled: false
+  knife_enabled: false
+  new_enabled: false
+  claude_enabled: false
+  max_taker_fee_pct: 0.2
+  stop_loss_pct: 0.8           # floor only; real stop = swing low - ATR buf
+  time_exit_sec: 99999999      # no flat timer - swings hold for days
+  time_exit_gain_pct: 0.0
+  max_hold_sec: 432000         # 5 days hard cap
+  signal_max_age_ms: 120000
+  loss_cooldown_sec: 7200
+  swing_params:
+    entry_score_min: 6
+    min_decline_pct: 6.0
+    min_decline_atr: 3.0
+    zz_atr: 1.2
+    zz_pct: 1.5
+    minor_zz_atr: 0.5
+    minor_zz_pct: 0.7
+    atr_n: 14
+    stop_buf_atr: 0.3
+    min_stop_pct: 0.8
+    max_stop_pct: 12.0
+    min_room_pct: 4.0
+    max_chase_atr: 1.5
+    struct_buf_pct: 0.25
+    universe_n: 30
+    min_vol: 400000
+    min_breadth: 0.20
+    # runged ladder [gain%, locked%] - tune live, hot-reloaded each cycle
+    ladder: [[0.5, 0.1], [0.75, 0.35], [1, 0.6], [1.25, 0.85],
+             [1.5, 1.35], [2, 1.85], [3, 2.85], [4, 3.85], [5, 4.85],
+             [6, 5.85], [8, 7.85], [10, 9.85]]
+
+risk:
+  starting_capital: 18.0       # paper pot sized like the real account
+  allocation_pct: 100.0
+  max_position_pct: 60.0       # swings can sit - leave room for others
+  max_risk_per_trade_pct: 0.6  # ~11c planned loss at the current pot
+  max_risk_pct: 1.1
+  max_daily_loss_pct: 4.0
+  max_drawdown_pct: 8.0
+  max_consecutive_losses: 3
+  cooldown_min: 60
+  max_trades_per_day: 12
+  max_open_positions: 3
+  emergency_file: state/HALT-swing
+
+execution:
+  mode: live                 # operator-promoted straight to live
+  taker_fee_pct: 0.1
+  maker_fee_pct: 0.1
+  slippage_bps: 8.0            # wider assumption for thin mid-caps
+  order_timeout_sec: 10
+  reconcile_interval_sec: 60
+
+dashboard:
+  enabled: true
+  host: 127.0.0.1
+  port: 8377

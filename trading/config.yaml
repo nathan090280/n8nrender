@@ -1,0 +1,94 @@
+# ============================================================
+#  ScalperBot settings - explained in plain English.
+#  Secrets are NOT here - set KUCOIN_API_KEY / KUCOIN_API_SECRET /
+#  KUCOIN_API_PASSPHRASE as environment variables.
+# ============================================================
+
+# ---------------- What the bot looks at ---------------------
+market:
+  quote_currency: USDT          # trade coins priced in USDT
+  base_url: https://api.kucoin.com
+  scan_interval_sec: 15         # re-rank the market every 15 seconds
+  top_candidates: 5             # keep this many best coins on the watchlist
+  candle_interval: 1min         # price-chart bar size used for analysis
+  history_limit: 340            # how many bars of history to keep per coin
+  watchlist: []                 # empty = scan everything; or list e.g. [BTC-USDT]
+  blacklist: []                 # coins never traded, e.g. [LUNC-USDT]
+  min_24h_quote_volume: 150000  # skip coins with less than this $ traded in 24h
+  max_spread_pct: 0.15          # skip coins where buy/sell gap exceeds this %
+  min_history_candles: 60       # skip coins with less history than this
+  stale_data_ms: 10000          # treat data older than this (ms) as unreliable
+
+# ---------------- When to buy -------------------------------
+strategy:
+  vol_spike_factor: 1.6         # coin's volatility must be this many x its normal level
+  atr_min_pct: 0.6              # OR: always-volatile coins qualify if swings >= this %
+  rhythm_enabled: false          # PATH 3: buy the bottom of a peak-trough range
+  gated_enabled: false          # PATH 1-2: disabled while rhythm is evaluated
+  knife_enabled: false           # PATH 4: completed-crash-candle + tight stop
+  knife_drop_pct: 5.0           # single-candle body drop = the knife itself
+  min_bull_pct: 0.05            # experimental completed 1m bull bar minimum
+  max_taker_fee_pct: 0.2        # refuse symbols charging more per side
+  rhythm_min_range_atr: 2.0     # range must be this many typical swings wide
+  rhythm_min_pivots: 3          # needs this many peaks AND troughs to count
+  rhythm_zone_pct: 0.35         # buy only in the bottom 35% of the range
+  rhythm_max_roundtrip_cost_pct: 0.45
+  rhythm_realistic_reward_risk: 0.6
+  rhythm_trail_steps: [[0.9, 0.45], [1.8, 0.25], [3, 0.4], [5, 0.6], [10, 1.0]]
+  rhythm_max_stop_pct: 1.5      # skip wide structural stops; do not tighten them
+  rhythm_min_path_pct: 2.0      # repeatable swing must offer this much net upside
+  rhythm_min_reward_risk: 1.1   # net upside / (stop distance + exit costs)
+  ema_fast: 9                   # fast trend line (bars) - must be above slow line
+  ema_slow: 21                  # slow trend line (bars)
+  atr_period: 14                # bars used to measure typical price swings
+  pullback_min_atr: 0.8         # dip must be at least this deep (in swing units)
+  pullback_max_atr: 3.5         # deeper than this = a crash, not a dip - skip
+  pullback_max_pct: 4.0         # absolute max dip depth (%), hard cap
+  extended_move_pct: 8.0        # skip coins already up this much recently
+  reversal_min_buy_ratio: 0.55  # buyers must be >55% of recent trade volume
+  reversal_min_imbalance: 0.05  # order book must lean bid-side by at least this much
+  reversal_lookback_sec: 30     # how far back to measure that buying pressure
+  expected_profit_min_pct: 0.60 # only enter if expected profit after costs > this %
+  take_profit_pct: 0.9          # sell when up this %
+  stop_loss_pct: 1.0            # sell when down this %
+  trail_activate_pct: 0.5       # once up this %, start trailing the stop upward
+  trail_offset_pct: 0.35        # trailing stop sits this % below the peak price
+  trail_steps: [[0.9, 0.25], [3, 0.4], [5, 0.6], [10, 1.0]]  # gain%: giveback%
+  time_exit_sec: 2700           # flat-timer == cap: losers get full recovery room
+  max_hold_sec: 2700            # never hold longer than this (absolute cap)
+  signal_max_age_ms: 5000       # ignore a signal older than this (ms)
+  switch_advantage_factor: 1.6  # a different coin must score this much better to switch
+  switch_min_hold_sec: 120      # never switch out before holding this long
+  switch_cooldown_sec: 180      # wait this long between switches
+
+# ---------------- Money protection (non-negotiable) ---------
+risk:
+  starting_capital: 1000.0      # money the bot works with (paper: simulated)
+  allocation_pct: 45.0          # P&L accounting share only - sizing can reach the whole free pot
+  max_position_pct: 100.0       # never put more than this % of money in one trade
+  max_risk_per_trade_pct: 2.0   # never risk losing more than this % per trade
+  max_risk_pct: 0.45            # planned loss cap ~0.45% of equity (~8c on $18)
+  max_daily_loss_pct: 50.0      # HARD STOP: lose more than this % today = halt
+  max_drawdown_pct: 25.0        # HARD STOP: equity down this % from peak = halt
+  max_consecutive_losses: 4     # this many losses in a row = forced cool-off
+  cooldown_min: 30              # cool-off length (minutes) after that loss streak
+  max_trades_per_day: 100       # never trade more than this per day
+  max_open_positions: 2         # how many trades can run at the same time
+  emergency_file: state/HALT-main    # per-bot halt file (STOP ALL writes both)
+
+# ---------------- Orders & fees -----------------------------
+execution:
+  mode: paper                   # paper = fake money (testing) | live = real money
+  taker_fee_pct: 0.1            # KuCoin fee per order (0.1% default)
+  maker_fee_pct: 0.1
+  slippage_bps: 5.0             # assume prices slip this much (0.05%) in tests
+  order_timeout_sec: 10         # cancel an order that hasn't filled by then
+  reconcile_interval_sec: 60    # re-check positions vs exchange every this often
+
+# ---------------- Dashboard ---------------------------------
+dashboard:
+  enabled: true
+  host: 127.0.0.1               # only reachable from this computer
+  port: 8377                    # open http://127.0.0.1:8377
+
+notify_webhook: ""              # optional URL to ping you on halts/errors
