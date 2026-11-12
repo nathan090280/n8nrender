@@ -366,7 +366,7 @@ async def kcs_topup(sess):
         accs = await kp.accounts("KCS")
         if not accs or float(accs[0].get("balance") or 0) * px < KCS_LOW:
             await kp._req("POST", "/api/v1/orders",
-                          body={"clientOid": __import__("uuid").uuid4.hex,
+                          body={"clientOid": __import__("uuid").uuid4().hex,
                                 "side": "buy", "symbol": "KCS-USDT",
                                 "type": "market",
                                 "funds": f"{KCS_TOPUP:.2f}"})
@@ -377,7 +377,7 @@ async def kcs_topup(sess):
         mkcs = float((acct.get("KCS") or {}).get("total") or 0)
         if mkcs * px < KCS_LOW:
             await kp._req("POST", "/api/v1/orders",
-                          body={"clientOid": __import__("uuid").uuid4.hex,
+                          body={"clientOid": __import__("uuid").uuid4().hex,
                                 "side": "buy", "symbol": "KCS-USDT",
                                 "type": "market",
                                 "funds": f"{KCS_TOPUP:.2f}"})
@@ -387,7 +387,7 @@ async def kcs_topup(sess):
             amt = min(avail, KCS_TOPUP / px * 0.95)
             if amt > 0:
                 await kp._req("POST", "/api/v2/accounts/inner-transfer",
-                              body={"clientOid": __import__("uuid").uuid4.hex,
+                              body={"clientOid": __import__("uuid").uuid4().hex,
                                     "currency": "KCS", "from": "trade",
                                     "to": "margin",
                                     "amount": f"{amt:.4f}"})
