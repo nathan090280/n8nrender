@@ -21,9 +21,10 @@ TOP_N = int(os.environ.get("TOP_N", 30))
 # structure
 LOOKBACK = 16            # 5m bars ≈ 80min
 PIVOT_PCT = 0.0012       # neighbor diff for a pivot
-RANGE_MIN, RANGE_MAX = 0.60, 3.2
+RANGE_MIN, RANGE_MAX = 1.00, 3.2
 EDGE_BUF = 0.0018        # ≥0.18% off the extreme
-LOWER_ZONE, UPPER_ZONE = 0.35, 0.65
+LOWER_ZONE, UPPER_ZONE = 0.25, 0.75
+WIDE_MIN = 1.3           # sub-floor/sub-ceil dips only on ranges this wide
 RSI_LEN = 7
 RSI_LONG, RSI_SHORT = 32, 68
 VOL_CAP = 2.8            # last bars vol < 2.8× avg20
@@ -493,7 +494,9 @@ async def scan(sess):
             dw = r1[-DYING_BARS:]
             dying = len(dw) >= DYING_BARS and \
                 float(dw[-1][1]) < float(dw[0][1]) * DYING_DROP
-            if dying:
+            if px < S["floor"] and S["rng"] < WIDE_MIN:
+                row["blocked"] = "thin range dip"
+            elif dying:
                 row["blocked"] = "dying coin"
             elif enabled_long and rr_ok and \
                     (not store or store.claim_symbol(sym, "grokky")):
@@ -520,7 +523,9 @@ async def scan(sess):
             stop = S["ceil"] * (1 + STOP_MAX / 100)
             sd = min(max((stop - px) / px * 100, STOP_MIN), STOP_MAX)
             rr_ok = (px - S["floor"] * 1.005) / px * 100 >= MIN_RR * sd
-            if not m.get("isMarginEnabled"):
+            if px > S["ceil"] and S["rng"] < WIDE_MIN:
+                row["blocked"] = "thin range rip"
+            elif not m.get("isMarginEnabled"):
                 row["blocked"] = "not marginable"
             elif enabled_short and rr_ok and \
                     (not store or store.claim_symbol(sym, "grokky")):
