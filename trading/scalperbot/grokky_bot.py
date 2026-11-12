@@ -1,8 +1,9 @@
 """Grokky — range/wedge trader. LONG on spot trade acct, SHORT cross margin.
 
 Recent peak-trough structure (5m bars, ~75min lookback): longs in the
-lower 35% of the range, shorts in the upper 35%, RSI(7) confirmation,
-stops just beyond the structure, ladder trails, all fleet armor inside.
+lower 25% of the range, shorts in the upper 25%, RSI(7) + two confirmed
+1m candles back inside the structure, stops just beyond the structure,
+ladder trails, all fleet armor inside.
 Longs spend real spot USDT only — no borrowing, no leverage.
 """
 import asyncio, json, os, time, sqlite3, aiohttp
@@ -322,6 +323,80 @@ async def fetch_bars(sess, sym):
             for c in sorted(rows, key=lambda x: int(x[0]))]
 
 
+async def confirm_entry(sess, sym, lvl, side):
+    """2 completed 1m bars confirm the turn: both green AND closing above
+    the floor for longs; both red AND closing below the ceil for shorts.
+    No confirmation, no entry — this is what skips knives like a dip
+    that keeps falling through the floor."""
+    try:
+        now = int(time.time())
+        d = await get(sess, f"/api/v1/market/candles?type=1min"
+                            f"&symbol={sym}&startAt={now - 600}&endAt={now}")
+        rows = sorted((d or {}).get("data") or [], key=lambda x: int(x[0]))
+        done = [c for c in rows if int(c[0]) < now // 60 * 60]
+        if len(done) < 2:
+            return False
+        b1, b2 = done[-2], done[-1]          # KuCoin: [t,o,c,h,l,v,tv]
+        o1, c1, o2, c2 = (float(b1[1]), float(b1[2]),
+                          float(b2[1]), float(b2[2]))
+        if side == "long":
+            return c1 > o1 and c2 > o2 and min(c1, c2) > lvl
+        return c1 < o1 and c2 < o2 and max(c1, c2) < lvl
+    except Exception:
+        return False
+
+
+KCS_LOW, KCS_TOPUP = 1.50, 0.50  # keep ~$2 KCS per acct for the fee rebate
+_kcs_checked = 0.0
+
+
+async def kcs_topup(sess):
+    """Refill KCS fee balances: <$1.50 -> market-buy $0.50. Margin acct
+    gets a spot buy + inner transfer (KCS-USDT isn't marginable)."""
+    global _kcs_checked
+    if kp is None or time.time() - _kcs_checked < 900:
+        return
+    _kcs_checked = time.time()
+    try:
+        t = await get(sess, "/api/v1/market/orderbook/level1"
+                            "?symbol=KCS-USDT")
+        px = float((t or {}).get("data", {}).get("price") or 0)
+        if px <= 0:
+            return
+        accs = await kp.accounts("KCS")
+        if not accs or float(accs[0].get("balance") or 0) * px < KCS_LOW:
+            await kp._req("POST", "/api/v1/orders",
+                          body={"clientOid": __import__("uuid").uuid4.hex,
+                                "side": "buy", "symbol": "KCS-USDT",
+                                "type": "market",
+                                "funds": f"{KCS_TOPUP:.2f}"})
+            print("grokky KCS topup: trade acct +$0.50", flush=True)
+        d = await kp._req("GET", "/api/v3/margin/accounts",
+                          params={"quoteCurrency": "USDT"})
+        acct = {a["currency"]: a for a in (d.get("accounts") or [])}
+        mkcs = float((acct.get("KCS") or {}).get("total") or 0)
+        if mkcs * px < KCS_LOW:
+            await kp._req("POST", "/api/v1/orders",
+                          body={"clientOid": __import__("uuid").uuid4.hex,
+                                "side": "buy", "symbol": "KCS-USDT",
+                                "type": "market",
+                                "funds": f"{KCS_TOPUP:.2f}"})
+            await asyncio.sleep(1)
+            accs = await kp.accounts("KCS")
+            avail = float(accs[0].get("available") or 0) if accs else 0
+            amt = min(avail, KCS_TOPUP / px * 0.95)
+            if amt > 0:
+                await kp._req("POST", "/api/v2/accounts/inner-transfer",
+                              body={"clientOid": __import__("uuid").uuid4.hex,
+                                    "currency": "KCS", "from": "trade",
+                                    "to": "margin",
+                                    "amount": f"{amt:.4f}"})
+                print(f"grokky KCS topup: margin +{amt:.4f} KCS",
+                      flush=True)
+    except Exception as ex:
+        print(f"grokky KCS topup fail: {str(ex)[:80]}", flush=True)
+
+
 _meta = {"ts": 0.0, "syms": {}}
 
 
@@ -441,6 +516,7 @@ async def scan(sess):
     meta_map = await sym_meta(sess)
     meq = await margin_equity(sess)
     susdt = await spot_usdt(sess)
+    await kcs_topup(sess)
     # short budget: room left under the 1.1x-equity gross cap after what
     # this bot already has open on margin (legacy longs + own shorts)
     mopen = sum(p["qty"] * (syms.get(s) or p["entry"])
@@ -483,9 +559,9 @@ async def scan(sess):
             row["blocked"] = "on the edge"
         elif px < S["floor"] * 0.985:
             row["blocked"] = "deep break"
-        elif zpos <= LOWER_ZONE and rr < RSI_LONG \
-                and float(r1[-1][2]) > float(r1[-1][1]):
-            # LONG in lower zone, oversold, last bar turned UP
+        elif zpos <= LOWER_ZONE and rr < RSI_LONG:
+            # LONG lower zone/oversold — armed only after 2 green 1m
+            # bars close back above the floor (knife filter)
             stop = S["floor"] * (1 - STOP_MAX / 100)
             sd = min(max((px - stop) / px * 100, STOP_MIN), STOP_MAX)
             rr_ok = (S["ceil"] * 0.995 - px) / px * 100 >= MIN_RR * sd
@@ -498,8 +574,11 @@ async def scan(sess):
                 row["blocked"] = "thin range dip"
             elif dying:
                 row["blocked"] = "dying coin"
-            elif enabled_long and rr_ok and \
-                    (not store or store.claim_symbol(sym, "grokky")):
+            elif not enabled_long or not rr_ok:
+                row["blocked"] = ("rr" if enabled_long else "long off")
+            elif not await confirm_entry(sess, sym, S["floor"], "long"):
+                row["blocked"] = "no bounce"
+            elif not store or store.claim_symbol(sym, "grokky"):
                 if await open_pos(sym, "long", px,
                                   px * (1 - sd / 100), S,
                                   {"spot_usdt": susdt,
@@ -514,12 +593,12 @@ async def scan(sess):
                         store.release_symbol(sym, "grokky")
                     row["blocked"] = "long failed"
             else:
-                row["blocked"] = ("rr" if enabled_long else "long off")
+                row["blocked"] = "claimed"
         elif px > S["ceil"] * 1.015:
             row["blocked"] = "deep break"
-        elif zpos >= UPPER_ZONE and rr > RSI_SHORT \
-                and float(r1[-1][2]) < float(r1[-1][1]):
-            # SHORT in upper zone, overbought, last bar turned DOWN
+        elif zpos >= UPPER_ZONE and rr > RSI_SHORT:
+            # SHORT upper zone/overbought — armed only after 2 red 1m
+            # bars close back below the ceil (spike filter)
             stop = S["ceil"] * (1 + STOP_MAX / 100)
             sd = min(max((stop - px) / px * 100, STOP_MIN), STOP_MAX)
             rr_ok = (px - S["floor"] * 1.005) / px * 100 >= MIN_RR * sd
@@ -527,8 +606,11 @@ async def scan(sess):
                 row["blocked"] = "thin range rip"
             elif not m.get("isMarginEnabled"):
                 row["blocked"] = "not marginable"
-            elif enabled_short and rr_ok and \
-                    (not store or store.claim_symbol(sym, "grokky")):
+            elif not enabled_short or not rr_ok:
+                row["blocked"] = ("rr" if enabled_short else "short off")
+            elif not await confirm_entry(sess, sym, S["ceil"], "short"):
+                row["blocked"] = "no fade"
+            elif not store or store.claim_symbol(sym, "grokky"):
                 if await open_pos(sym, "short", px,
                                   px * (1 + sd / 100), S,
                                   {"margin_eq": mroom,
@@ -543,7 +625,7 @@ async def scan(sess):
                         store.release_symbol(sym, "grokky")
                     row["blocked"] = "short failed"
             else:
-                row["blocked"] = ("rr" if enabled_short else "short off")
+                row["blocked"] = "claimed"
         else:
             row["blocked"] = (f"z{zpos:.2f} rsi{rr:.0f}" if zpos < 0.8
                               else "mid")
