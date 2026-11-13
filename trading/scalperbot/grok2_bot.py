@@ -30,7 +30,7 @@ RSI_LEN = 7
 RSI_LONG, RSI_SHORT = 32, 68
 VOL_CAP = 2.8            # last bars vol < 2.8× avg20
 # risk
-STOP_MIN, STOP_MAX = 0.5, 1.0
+STOP_MIN, STOP_MAX = 0.25, 0.3
 LADDER = [(0.55, 0.08), (1.0, 0.45), (1.8, 0.9), (3.0, 1.8),
           (5.0, 3.4), (8.0, 6.5)]
 TIME_EXIT_MIN = 60       # red/scratch cuts; locked-BE rides free
@@ -78,6 +78,12 @@ def load_all():
         enabled_short = st.get("es", True)
     except Exception:
         pass
+    for p in positions.values():
+        # tighten only: never loosen a stored stop past entry-side STOP_MAX
+        if p["side"] == "long":
+            p["stop"] = max(p["stop"], p["entry"] * (1 - STOP_MAX / 100))
+        else:
+            p["stop"] = min(p["stop"], p["entry"] * (1 + STOP_MAX / 100))
 
 
 async def get(sess, path):
@@ -758,7 +764,7 @@ async def _manage_body():
             p["peak"] = min(p.get("peak", p["entry"]), px)
         pgain = ((p["peak"] - p["entry"]) if side == "long"
                  else (p["entry"] - p["peak"])) / p["entry"] * 100
-        if pgain >= 1.0:
+        if pgain >= 0.5:
             dist = 0.20 if pgain >= 2.5 else 0.50
             trail = p["peak"] * (1 - dist / 100) if side == "long" \
                 else p["peak"] * (1 + dist / 100)
