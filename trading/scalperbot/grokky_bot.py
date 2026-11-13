@@ -59,25 +59,53 @@ def db():
     return sqlite3.connect(DB, timeout=30)
 
 
+def _jdump(path, obj):
+    try:
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as src, \
+                        open(path + ".bak", "wb") as dst:
+                    dst.write(src.read())
+            except Exception:
+                pass
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(obj, f)
+        os.replace(tmp, path)
+    except Exception as e:
+        print(f"grokky save fail {path}: {str(e)[:60]}", flush=True)
+
+
+def _jload(path):
+    for cand in (path, path + ".bak"):
+        try:
+            return json.load(open(cand))
+        except Exception:
+            continue
+    return None
+
+
 def save_all():
-    json.dump(positions, open(POSF, "w"))
-    json.dump({"realized": realized, "el": enabled_long, "es": enabled_short},
-              open(POSF.replace("positions", "state"), "w"))
+    _jdump(POSF, positions)
+    _jdump(POSF.replace("positions", "state"),
+           {"realized": realized, "el": enabled_long,
+            "es": enabled_short})
 
 
 def load_all():
     global positions, realized, enabled_long, enabled_short
-    try:
-        positions = json.load(open(POSF))
-    except Exception:
-        positions = {}
-    try:
-        st = json.load(open(POSF.replace("positions", "state")))
-        realized = st.get("realized", 0.0)
-        enabled_long = st.get("el", True)
-        enabled_short = st.get("es", True)
-    except Exception:
-        pass
+    positions = _jload(POSF) or {}
+    st = _jload(POSF.replace("positions", "state"))
+    if st is None:
+        # state absent/corrupt: entries stay OFF until toggled on —
+        # never silently re-arm after a bad shutdown
+        enabled_long = enabled_short = False
+        print("grokky state absent/corrupt: entries OFF until toggled",
+              flush=True)
+        return
+    realized = st.get("realized", 0.0)
+    enabled_long = st.get("el", True)
+    enabled_short = st.get("es", True)
 
 
 async def get(sess, path):
