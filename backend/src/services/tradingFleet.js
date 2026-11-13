@@ -8,6 +8,7 @@ const PYTHON = process.env.TRADING_PYTHON || '/opt/venv/bin/python';
 const SHUTDOWN_GRACE_MS = 5000;
 
 const GROKKY_PORT = 8385;
+const GROK2_PORT = 8386;
 
 const children = new Map();
 let stopping = false;
@@ -93,7 +94,8 @@ function start() {
     DB_PATH: dbPath,
     QUALIFICATION_FILE: path.join(STATE, 'qualification.json'),
     DASHBOARD_PORT: '8377',
-    PEER_BOTS: `grokky=http://127.0.0.1:${GROKKY_PORT}`
+    PEER_BOTS: `grokky=http://127.0.0.1:${GROKKY_PORT},` +
+      `grok2=http://127.0.0.1:${GROK2_PORT}`
   });
 
   startChild('grokky', ['-u', '-m', 'scalperbot.grokky_bot'], {
@@ -103,9 +105,17 @@ function start() {
     DAY_LOSS_CAP: process.env.GROKKY_DAY_LOSS_CAP || '-2.60'
   });
 
+  startChild('grok2', ['-u', '-m', 'scalperbot.grok2_bot'], {
+    DB_PATH: dbPath,
+    PORT: String(GROK2_PORT),
+    POS_PATH: path.join(STATE, 'grok2_positions.json'),
+    DAY_LOSS_CAP: process.env.GROK2_DAY_LOSS_CAP || '-2.60',
+    KCS_TOPUP: '0'
+  });
+
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
-  console.log('[trading] Grokky live; dashboard-only process cannot place orders');
+  console.log('[trading] Grokky + Grok2 live; dashboard-only process cannot place orders');
 }
 
 function stop() {

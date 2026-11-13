@@ -96,6 +96,9 @@ input{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;padding:4px;widt
 <details id=grokkywrap open><summary style="cursor:pointer;color:#2dd4bf;font-size:15px;font-weight:bold">Grokky (live)</summary>
 <div class=botbox><b><span class="badge" style="background:#2dd4bf;color:#0b0e14">Grokky</span></b><div id=grokky_1h>waiting for Grokky...</div></div>
 </details>
+<details id=grok2wrap open><summary style="cursor:pointer;color:#a78bfa;font-size:15px;font-weight:bold">Grok2 (live, swing horizon)</summary>
+<div class=botbox><b><span class="badge" style="background:#a78bfa;color:#0b0e14">Grok2</span></b><div id=grok2_1h>waiting for Grok2...</div></div>
+</details>
 <details id=rhythmwrap2 open><summary style="cursor:pointer;color:#8b949e;font-size:15px;font-weight:bold">Rhythm Scanner</summary>
 <div class=split>
 <div class=botbox><b><span class="badge b1m">1m Scalp</span></b><div id=rhythm_main>scanning...</div></div>
@@ -170,7 +173,7 @@ function ding(){_tone(880,0,0.15)}
 function trill(up){_tone(up?660:880,0,0.12);_tone(up?990:440,0.14,0.18)}
 document.addEventListener('click',()=>{try{_ac=_ac||new(window.AudioContext||window.webkitAudioContext)();_ac.resume()}catch(e){}},{once:true});
 const symL=(x)=>`<a href="https://www.kucoin.com/trade/${x}" target="_blank" style="color:#e6edf3;text-decoration:none">${x}</a>`;
-const pathLabel=(p)=>({rhythm:'Rhythm',knife:'Knife',gated:'Gated',new:'Chatty',claude:'Claude',swing:'Swing',short:'LongShort',long:'LongShort',longshort:'LongShort',longshort_long:'LongShorts (Long)',longshort_short:'LongShorts (Short)',ranger:'Ranger',grokky:'Grokky',grokky_long:'Grokky (Long)',grokky_short:'Grokky (Short)',manual:'Manual','adopted-orphan':'Adopted'}[p]||'Unknown');
+const pathLabel=(p)=>({rhythm:'Rhythm',knife:'Knife',gated:'Gated',new:'Chatty',claude:'Claude',swing:'Swing',short:'LongShort',long:'LongShort',longshort:'LongShort',longshort_long:'LongShorts (Long)',longshort_short:'LongShorts (Short)',ranger:'Ranger',grokky:'Grokky',grokky_long:'Grokky (Long)',grokky_short:'Grokky (Short)',grok2:'Grok2',grok2_long:'Grok2 (Long)',grok2_short:'Grok2 (Short)',manual:'Manual','adopted-orphan':'Adopted'}[p]||'Unknown');
 const bcls=(b)=>b==='new'?'bnew':b==='swing'?'bswing':String(b).startsWith('claude')?'bclaude':b==='15m'?'b15m':'b1m';
 const btf=(b)=>b==='new'?'new':b==='swing'?'1h':b==='short'?'LS':b==='ranger'?'rng':b==='grokky'?'':b==='longshort'?'':(b==='15m'||b==='claude15')?'15m':'1m';
 const tbtn=(label,bot,path,b)=>{if(!b)return '';const off=(b.paths||{})[path]!==true,down=b.peer_offline;return `<button ${down?'disabled':''} style="border:2px solid ${off?'#f85149':'#3fb950'};color:${off?'#f85149':'#3fb950'};background:transparent" onclick="post('/api/path',{bot:'${bot}',path:'${path}',on:${off?1:0}})">${label} ${down?'OFFLINE':off?'OFF':'on'}</button>`};
@@ -213,12 +216,13 @@ pathbtns.innerHTML=['gated','rhythm','knife'].map(p=>['main','15m'].filter(n=>s.
 const off=s.bots.new.paths?.new!==true,down=s.bots.new.peer_offline;return ` · <button ${down?'disabled':''} style="border:2px solid ${off?'#f85149':'#3fb950'};color:${off?'#f85149':'#3fb950'};background:transparent" onclick="post('/api/path',{bot:'new',path:'new',on:${off?1:0}})">Chatty ${down?'OFFLINE':off?'OFF':'on'}</button>`})():'')+
 (s.bots.claude||s.bots.claude15?' · '+[tbtn('Claude 1m','claude','claude',s.bots.claude),tbtn('Claude 15m','claude15','claude',s.bots.claude15)].filter(x=>x).join(' '):'')+
 (s.bots.swing?' · '+tbtn('Swing','swing','swing',s.bots.swing):'')+
-(s.bots.short?' · '+tbtn('Long Shorts Long','short','long',s.bots.short)+' '+tbtn('Long Shorts Short','short','short',s.bots.short):'')+(s.bots.ranger?' · '+tbtn('Ranger','ranger','ranger',s.bots.ranger):'')+(s.bots.grokky?' · '+tbtn('Grokky Long','grokky','grokky_long',s.bots.grokky)+' '+tbtn('Grokky Short','grokky','grokky_short',s.bots.grokky):'');
+(s.bots.short?' · '+tbtn('Long Shorts Long','short','long',s.bots.short)+' '+tbtn('Long Shorts Short','short','short',s.bots.short):'')+(s.bots.ranger?' · '+tbtn('Ranger','ranger','ranger',s.bots.ranger):'')+(s.bots.grokky?' · '+tbtn('Grokky Long','grokky','grokky_long',s.bots.grokky)+' '+tbtn('Grokky Short','grokky','grokky_short',s.bots.grokky):'')+(s.bots.grok2?' · '+tbtn('Grok2 Long','grok2','grok2_long',s.bots.grok2)+' '+tbtn('Grok2 Short','grok2','grok2_short',s.bots.grok2):'');
 claude_1m.innerHTML=claudeBox(s.bots.claude,'Claude 1m');
 claude_15m.innerHTML=claudeBox(s.bots.claude15,'Claude 15m');
 if(document.getElementById('swing_1h'))swing_1h.innerHTML=swingBox(s.bots.swing,'Swing');
 if(document.getElementById('ranger_1h'))ranger_1h.innerHTML=rangerBox(s.bots.ranger);
 if(document.getElementById('grokky_1h'))grokky_1h.innerHTML=rangerBox(s.bots.grokky);
+if(document.getElementById('grok2_1h'))grok2_1h.innerHTML=rangerBox(s.bots.grok2);
 if(document.getElementById('short_1h'))short_1h.innerHTML=shortBox(s.bots.short);
 async function resumeAll(){await post('/api/fleet/resume',{bot:'all'});const s=await(await fetch('/api/fleet')).json();document.title=((s.positions||[]).length?`(${s.positions.length}) `:'')+(Object.values(s.bots||{}).some(b=>b.halted)?'[!] ':'')+'ScalperBot'}
 const errs=Object.entries(s.bots||{}).flatMap(([n,b])=>(b.errors||[]).map(e=>`${n==='main'?'1m':n} ${e}`));

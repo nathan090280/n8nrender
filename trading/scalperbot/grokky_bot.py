@@ -323,27 +323,64 @@ async def fetch_bars(sess, sym):
             for c in sorted(rows, key=lambda x: int(x[0]))]
 
 
-async def confirm_entry(sess, sym, lvl, side):
-    """2 completed 1m bars confirm the turn: both green AND closing above
-    the floor for longs; both red AND closing below the ceil for shorts.
-    No confirmation, no entry — this is what skips knives like a dip
-    that keeps falling through the floor."""
+CHASE_PCT = 0.4            # dip/rip entries skipped once the turn already
+                           # ran this far — don't buy the top of the bounce
+
+
+async def confirm_entry(sess, sym, lvl, side, dip, tf="1min"):
+    """2 completed `tf` bars confirm the turn: both green AND closing
+    above the floor for longs; both red AND closing below the ceil for
+    shorts. Sub-structure entries (dip below floor / rip above ceil) are
+    also rejected once the move has already run > CHASE_PCT.
+    Returns 'ok' when confirmed, else the blocked reason."""
     try:
         now = int(time.time())
-        d = await get(sess, f"/api/v1/market/candles?type=1min"
-                            f"&symbol={sym}&startAt={now - 600}&endAt={now}")
+        sec = 60 if tf == "1min" else 300
+        d = await get(sess, f"/api/v1/market/candles?type={tf}"
+                            f"&symbol={sym}&startAt={now - sec * 10}"
+                            f"&endAt={now}")
         rows = sorted((d or {}).get("data") or [], key=lambda x: int(x[0]))
-        done = [c for c in rows if int(c[0]) < now // 60 * 60]
+        done = [c for c in rows if int(c[0]) < now // sec * sec]
         if len(done) < 2:
-            return False
+            return "no signal"
         b1, b2 = done[-2], done[-1]          # KuCoin: [t,o,c,h,l,v,tv]
-        o1, c1, o2, c2 = (float(b1[1]), float(b1[2]),
-                          float(b2[1]), float(b2[2]))
+        o1, c1 = float(b1[1]), float(b1[2])
+        o2, c2 = float(b2[1]), float(b2[2])
         if side == "long":
-            return c1 > o1 and c2 > o2 and min(c1, c2) > lvl
-        return c1 < o1 and c2 < o2 and max(c1, c2) < lvl
+            if not (c1 > o1 and c2 > o2 and min(c1, c2) > lvl):
+                return "no bounce"
+            if dip:
+                dl = min(float(c[4]) for c in done[-8:])
+                if c2 > dl * (1 + CHASE_PCT / 100):
+                    return "late"
+        else:
+            if not (c1 < o1 and c2 < o2 and max(c1, c2) < lvl):
+                return "no fade"
+            if dip:
+                rh = max(float(c[3]) for c in done[-8:])
+                if c2 < rh * (1 - CHASE_PCT / 100):
+                    return "late"
+        return "ok"
     except Exception:
-        return False
+        return "no signal"
+
+
+REGIME_BARS, REGIME_DROP = 36, 2.0  # BTC 5m×36 ≈ 3h; ±2% pauses that side
+
+
+async def btc_regime(sess):
+    """-1: BTC bleeding (no longs) · +1: ripping (no shorts) · 0: ok.
+    Range-scalp floors are stairs while the market slides — don't buy
+    dips of a falling market."""
+    try:
+        r1 = await fetch_bars(sess, "BTC-USDT")
+        if len(r1) < REGIME_BARS + 2:
+            return 0
+        chg = (float(r1[-1][1]) / float(r1[-REGIME_BARS][1]) - 1) * 100
+        return -1 if chg <= -REGIME_DROP else (1 if chg >= REGIME_DROP
+                                               else 0)
+    except Exception:
+        return 0
 
 
 KCS_LOW, KCS_TOPUP = 1.50, 0.50  # keep ~$2 KCS per acct for the fee rebate
@@ -354,6 +391,8 @@ async def kcs_topup(sess):
     """Refill KCS fee balances: <$1.50 -> market-buy $0.50. Margin acct
     gets a spot buy + inner transfer (KCS-USDT isn't marginable)."""
     global _kcs_checked
+    if os.environ.get("KCS_TOPUP", "1") == "0":
+        return                          # one bot manages the KCS pot
     if kp is None or time.time() - _kcs_checked < 900:
         return
     _kcs_checked = time.time()
@@ -437,7 +476,7 @@ async def spot_usdt(sess):
 
 
 _fee_rate = {}              # sym -> taker % (0.1 / 0.2 / 0.3 fee class)
-MAX_TAKER = 0.2             # Class C (0.3%) pairs are banned — never won
+MAX_TAKER = 0.15            # Class B+ banned: 0.4%/rt eats a ~0.5% move
 
 
 async def taker_rate(_sess, sym):
@@ -523,6 +562,7 @@ async def scan(sess):
                 for s, p in positions.items()
                 if p.get("acct", "margin") == "margin")
     mroom = max(0.0, 1.1 * meq - mopen)
+    regime = await btc_regime(sess)
     lc, sc = [], []
     for sym, px in syms.items():
         if sym in positions or not px:
@@ -570,30 +610,36 @@ async def scan(sess):
             dw = r1[-DYING_BARS:]
             dying = len(dw) >= DYING_BARS and \
                 float(dw[-1][1]) < float(dw[0][1]) * DYING_DROP
-            if px < S["floor"] and S["rng"] < WIDE_MIN:
+            dip = px < S["floor"]
+            if dip and S["rng"] < WIDE_MIN:
                 row["blocked"] = "thin range dip"
+            elif regime < 0:
+                row["blocked"] = "btc bleeding"
             elif dying:
                 row["blocked"] = "dying coin"
             elif not enabled_long or not rr_ok:
                 row["blocked"] = ("rr" if enabled_long else "long off")
-            elif not await confirm_entry(sess, sym, S["floor"], "long"):
-                row["blocked"] = "no bounce"
-            elif not store or store.claim_symbol(sym, "grokky"):
-                if await open_pos(sym, "long", px,
-                                  px * (1 - sd / 100), S,
-                                  {"spot_usdt": susdt,
-                                   "inc": m.get("baseIncrement")}):
-                    trades_today += 1
-                    print(f"GROKKY LONG {sym} @ {px} "
-                          f"{S['kind']} {S['rng']:.1f}% rsi {rr:.0f}",
-                          flush=True)
-                    row["blocked"] = "LONGED"
-                else:
-                    if store:
-                        store.release_symbol(sym, "grokky")
-                    row["blocked"] = "long failed"
             else:
-                row["blocked"] = "claimed"
+                cf = await confirm_entry(sess, sym, S["floor"], "long",
+                                         dip)
+                if cf != "ok":
+                    row["blocked"] = cf
+                elif not store or store.claim_symbol(sym, "grokky"):
+                    if await open_pos(sym, "long", px,
+                                      px * (1 - sd / 100), S,
+                                      {"spot_usdt": susdt,
+                                       "inc": m.get("baseIncrement")}):
+                        trades_today += 1
+                        print(f"GROKKY LONG {sym} @ {px} "
+                              f"{S['kind']} {S['rng']:.1f}% rsi {rr:.0f}",
+                              flush=True)
+                        row["blocked"] = "LONGED"
+                    else:
+                        if store:
+                            store.release_symbol(sym, "grokky")
+                        row["blocked"] = "long failed"
+                else:
+                    row["blocked"] = "claimed"
         elif px > S["ceil"] * 1.015:
             row["blocked"] = "deep break"
         elif zpos >= UPPER_ZONE and rr > RSI_SHORT:
@@ -602,30 +648,36 @@ async def scan(sess):
             stop = S["ceil"] * (1 + STOP_MAX / 100)
             sd = min(max((stop - px) / px * 100, STOP_MIN), STOP_MAX)
             rr_ok = (px - S["floor"] * 1.005) / px * 100 >= MIN_RR * sd
-            if px > S["ceil"] and S["rng"] < WIDE_MIN:
+            rip = px > S["ceil"]
+            if rip and S["rng"] < WIDE_MIN:
                 row["blocked"] = "thin range rip"
+            elif regime > 0:
+                row["blocked"] = "btc ripping"
             elif not m.get("isMarginEnabled"):
                 row["blocked"] = "not marginable"
             elif not enabled_short or not rr_ok:
                 row["blocked"] = ("rr" if enabled_short else "short off")
-            elif not await confirm_entry(sess, sym, S["ceil"], "short"):
-                row["blocked"] = "no fade"
-            elif not store or store.claim_symbol(sym, "grokky"):
-                if await open_pos(sym, "short", px,
-                                  px * (1 + sd / 100), S,
-                                  {"margin_eq": mroom,
-                                   "inc": m.get("baseIncrement")}):
-                    trades_today += 1
-                    print(f"GROKKY SHORT {sym} @ {px} "
-                          f"{S['kind']} {S['rng']:.1f}% rsi {rr:.0f}",
-                          flush=True)
-                    row["blocked"] = "SHORTED"
-                else:
-                    if store:
-                        store.release_symbol(sym, "grokky")
-                    row["blocked"] = "short failed"
             else:
-                row["blocked"] = "claimed"
+                cf = await confirm_entry(sess, sym, S["ceil"], "short",
+                                         rip)
+                if cf != "ok":
+                    row["blocked"] = cf
+                elif not store or store.claim_symbol(sym, "grokky"):
+                    if await open_pos(sym, "short", px,
+                                      px * (1 + sd / 100), S,
+                                      {"margin_eq": mroom,
+                                       "inc": m.get("baseIncrement")}):
+                        trades_today += 1
+                        print(f"GROKKY SHORT {sym} @ {px} "
+                              f"{S['kind']} {S['rng']:.1f}% rsi {rr:.0f}",
+                              flush=True)
+                        row["blocked"] = "SHORTED"
+                    else:
+                        if store:
+                            store.release_symbol(sym, "grokky")
+                        row["blocked"] = "short failed"
+                else:
+                    row["blocked"] = "claimed"
         else:
             row["blocked"] = (f"z{zpos:.2f} rsi{rr:.0f}" if zpos < 0.8
                               else "mid")
@@ -782,6 +834,22 @@ async def toggle(req):
                               "short": enabled_short})
 
 
+async def api_close(req):
+    """Manual close at market — the dashboard forwards /api/close here."""
+    try:
+        sym = (await req.json()).get("symbol")
+        p = positions.get(sym)
+        if not p:
+            return web.json_response({"ok": False, "error": "not open"},
+                                     status=404)
+        px = syms.get(sym) or p["entry"]
+        await close_pos(sym, p, px, "manual")
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)},
+                                 status=500)
+
+
 async def fast_tick(sess):
     """~1.2s price refresh on held positions so stops/trails see wicks
     the 8s scan loop would miss."""
@@ -806,6 +874,7 @@ async def run():
     app = web.Application()
     app.router.add_get("/api/state", state)
     app.router.add_post("/api/path", toggle)
+    app.router.add_post("/api/close", api_close)
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", PORT).start()
