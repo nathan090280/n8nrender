@@ -506,15 +506,17 @@ class Dashboard:
         on = str(d.get("on")) in ("1", "true", "True") or d.get("on") is True
         if path not in ("gated", "rhythm", "knife", "new", "claude",
                         "swing", "short", "long", "ranger",
-                        "grokky_long", "grokky_short"):
+                        "grokky_long", "grokky_short",
+                        "grok2_long", "grok2_short"):
             return web.json_response({"ok": False}, status=400)
         own = {"new": "new", "claude": "claude", "claude15": "claude",
                "swing": "swing", "short": "short", "long": "short",
-               "ranger": "ranger", "grokky": "grokky"}
+               "ranger": "ranger", "grokky": "grokky", "grok2": "grok2"}
         if bot != "all" and own.get(bot, "classic") != (
                 path if path in ("new", "claude", "swing", "short", "long",
                                  "ranger") else
-                "grokky" if path.startswith("grokky") else "classic"):
+                "grokky" if path.startswith("grokky") else
+                "grok2" if path.startswith("grok2") else "classic"):
             return web.json_response({"ok": False}, status=400)
         if bot == "all" and path in ("new", "claude", "swing", "short"):
             return web.json_response({"ok": False}, status=400)
