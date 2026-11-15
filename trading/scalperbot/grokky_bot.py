@@ -520,9 +520,54 @@ async def taker_rate(_sess, sym):
     return None               # unknown: allowed, learned on first fill
 
 
+_kcs_px, _kcs_px_ts = 0.0, 0.0
+
+
+async def _kcs_usdt():
+    """KCS mark price in USDT, cached ~60s."""
+    global _kcs_px, _kcs_px_ts
+    if _kcs_px and time.time() - _kcs_px_ts < 60:
+        return _kcs_px
+    try:
+        d = await kp._req("GET", "/api/v1/market/orderbook/level1",
+                          params={"symbol": "KCS-USDT"})
+        px = float((d or {}).get("price") or 0)
+        if px > 0:
+            _kcs_px, _kcs_px_ts = px, time.time()
+    except Exception:
+        pass
+    return _kcs_px
+
+
+async def _kcs_settled_fee(order_id):
+    """True fee when the account pays fees in KCS: sum the ledger's
+    KCS fee-deduction entries for this order, converted to USDT.
+    None when the order was fee'd in the quote currency instead."""
+    if not order_id:
+        return None
+    for attempt in range(2):          # the deduction lags the fill ~1s
+        try:
+            d = await kp._req("GET", "/api/v1/accounts/ledgers",
+                              params={"currency": "KCS",
+                                      "direction": "out",
+                                      "pageSize": 50})
+            amt = sum(float(it.get("amount") or 0)
+                      for it in (d or {}).get("items", [])
+                      if order_id in str(it.get("context") or ""))
+            if amt > 0:
+                px = await _kcs_usdt()
+                return amt * px if px else None
+            if attempt == 0:
+                await asyncio.sleep(1.2)
+        except Exception:
+            return None
+    return None
+
+
 async def fill_fee_usdt(sym, side, p):
-    """Real fee from our newest fill on `side`, converted to USDT.
-    Returns None if no fill is found."""
+    """Real fee from our newest fill on `side`, in USDT. When the
+    account pays fees in KCS the ledger deduction is the true cost
+    (~20% below the nominal USDT fee). None if no fill found."""
     try:
         fs = await kp.fills(sym)
         f = next((x for x in fs if x["side"] == side
@@ -537,7 +582,8 @@ async def fill_fee_usdt(sym, side, p):
         if side == "buy":
             _fee_rate[sym] = round(
                 fee / max(1e-9, float(f.get("funds") or 0)) * 100, 3)
-        return fee
+        settled = await _kcs_settled_fee(f.get("orderId"))
+        return settled if settled is not None else fee
     except Exception:
         return None
 
