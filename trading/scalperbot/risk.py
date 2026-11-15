@@ -80,14 +80,18 @@ class RiskManager:
             self._write_halt_file()
             return RiskVerdict(False, "hard daily loss limit hit")
         if time.time() - self._boot_ts >= 90:        # warmup skips dd check
-            dd = ((self.peak_equity - self.equity) / self.peak_equity * 100
-                  if self.peak_equity else 0)
+            # daily drawdown only: equity down this % from day start =
+            # halt. No peak tracking — yesterday's losses don't linger.
+            dd = ((self.day_start_equity - self.equity)
+                  / self.day_start_equity * 100
+                  if self.day_start_equity else 0)
             if dd >= self.drawdown_pct:              # HARD limit, needs 2 reads
                 self._dd_breach = getattr(self, "_dd_breach", 0) + 1
                 if self._dd_breach >= 2:
-                    self.halted, self.halt_reason = True, "max drawdown hit"
+                    self.halted, self.halt_reason = \
+                        True, "daily drawdown hit"
                     self._write_halt_file()
-                return RiskVerdict(False, "max drawdown hit")
+                return RiskVerdict(False, "daily drawdown hit")
             self._dd_breach = 0                      # equity recovered -> reset
         if data_health and data_health.get("ws_stale"):
             return RiskVerdict(False, "market data unreliable (WS stale)")

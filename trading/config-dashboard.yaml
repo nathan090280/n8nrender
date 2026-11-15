@@ -8,3 +8,5 @@ dashboard:
   enabled: true
   host: 127.0.0.1
   port: 8377
+risk:
+  max_drawdown_pct: 20.0   # daily drawdown halt only (from day-start equity)
