@@ -17,8 +17,6 @@ POSF = os.environ.get("POS_PATH", "/app/state/grok2_positions.json")
 PORT = int(os.environ.get("PORT", 8386))
 FEE = float(os.environ.get("FEE_PCT", 0.1)) / 100
 POT_USE = 0.9            # 90% of available account equity — no other cap
-MIN_NOTIONAL = 8.0       # sub-$8 trades can't beat ~5c round-trip fees —
-                         # skip them entirely (dust positions)
 PAPER_POT = 20.0         # pretend balance for paper mode
 TOP_N = int(os.environ.get("TOP_N", 30))
 # structure
@@ -61,53 +59,25 @@ def db():
     return sqlite3.connect(DB, timeout=30)
 
 
-def _jdump(path, obj):
-    try:
-        if os.path.exists(path):
-            try:
-                with open(path, "rb") as src, \
-                        open(path + ".bak", "wb") as dst:
-                    dst.write(src.read())
-            except Exception:
-                pass
-        tmp = path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(obj, f)
-        os.replace(tmp, path)
-    except Exception as e:
-        print(f"grok2 save fail {path}: {str(e)[:60]}", flush=True)
-
-
-def _jload(path):
-    for cand in (path, path + ".bak"):
-        try:
-            return json.load(open(cand))
-        except Exception:
-            continue
-    return None
-
-
 def save_all():
-    _jdump(POSF, positions)
-    _jdump(POSF.replace("positions", "state"),
-           {"realized": realized, "el": enabled_long,
-            "es": enabled_short})
+    json.dump(positions, open(POSF, "w"))
+    json.dump({"realized": realized, "el": enabled_long, "es": enabled_short},
+              open(POSF.replace("positions", "state"), "w"))
 
 
 def load_all():
     global positions, realized, enabled_long, enabled_short
-    positions = _jload(POSF) or {}
-    st = _jload(POSF.replace("positions", "state"))
-    if st is None:
-        # state absent/corrupt: entries stay OFF until toggled on —
-        # never silently re-arm after a bad shutdown
-        enabled_long = enabled_short = False
-        print("grok2 state absent/corrupt: entries OFF until toggled",
-              flush=True)
-    else:
+    try:
+        positions = json.load(open(POSF))
+    except Exception:
+        positions = {}
+    try:
+        st = json.load(open(POSF.replace("positions", "state")))
         realized = st.get("realized", 0.0)
         enabled_long = st.get("el", True)
         enabled_short = st.get("es", True)
+    except Exception:
+        pass
     for p in positions.values():
         # tighten only: never loosen a stored stop past entry-side STOP_MAX
         if p["side"] == "long":
@@ -289,8 +259,8 @@ async def open_pos(sym, side, px, stop, S, meta):
                 # impossible to exceed 1x
                 spot = float(meta.get("spot_usdt") or 0)
                 spend = round(spot * POT_USE, 2)
-                if spend < MIN_NOTIONAL:
-                    print(f"grok2 skip {sym}: dust ${spot:.2f}",
+                if spend < 1.0:
+                    print(f"grok2 skip {sym}: no spot ${spot:.2f}",
                           flush=True)
                     return None
                 qty = int(spend / px / inc) * inc
@@ -313,8 +283,8 @@ async def open_pos(sym, side, px, stop, S, meta):
             else:
                 eq = float(meta.get("margin_eq") or 0)
                 spend = round(eq * POT_USE, 2)
-                if spend < MIN_NOTIONAL:
-                    print(f"grok2 skip {sym}: dust margin ${eq:.2f}",
+                if spend < 1.0:
+                    print(f"grok2 skip {sym}: no margin ${eq:.2f}",
                           flush=True)
                     return None
                 qty = int(spend / px / inc) * inc
@@ -404,12 +374,12 @@ async def confirm_entry(sess, sym, lvl, side, dip, tf="1min"):
 REGIME_BARS, REGIME_DROP = 24, 3.0  # BTC 15m×24 ≈ 6h; ±3% pauses that side
 
 
-async def btc_regime(sess):
+async def btc_regime(sess, r1=None):
     """-1: BTC bleeding (no longs) · +1: ripping (no shorts) · 0: ok.
     Range-scalp floors are stairs while the market slides — don't buy
     dips of a falling market."""
     try:
-        r1 = await fetch_bars(sess, "BTC-USDT")
+        r1 = r1 or await fetch_bars(sess, "BTC-USDT")
         if len(r1) < REGIME_BARS + 2:
             return 0
         chg = (float(r1[-1][1]) / float(r1[-REGIME_BARS][1]) - 1) * 100
@@ -417,6 +387,27 @@ async def btc_regime(sess):
                                                else 0)
     except Exception:
         return 0
+
+
+DIP_BARS, DIP_TRIG, DIP_CLEAR = 8, 0.7, 0.3  # 15m×8 = 2h window
+_dip_paused, _rip_paused = False, False
+
+
+def btc_dip_rip(r1):
+    """Drawdown detectors with hysteresis (experiment, DIP_GATE=0 to off).
+    Longs pause while BTC sits >0.7% under its 2h high, release within
+    0.3%; shorts pause >0.7% over the 2h low, release within 0.3%."""
+    global _dip_paused, _rip_paused
+    if os.environ.get("DIP_GATE", "1") == "0" or len(r1) < DIP_BARS + 1:
+        _dip_paused = _rip_paused = False
+        return False, False
+    w = r1[-(DIP_BARS + 1):]
+    px = float(r1[-1][1])
+    dd = (px / max(float(b[2]) for b in w) - 1) * 100
+    up = (px / min(float(b[3]) for b in w) - 1) * 100
+    _dip_paused = dd <= -DIP_TRIG or (_dip_paused and dd < -DIP_CLEAR)
+    _rip_paused = up >= DIP_TRIG or (_rip_paused and up > DIP_CLEAR)
+    return _dip_paused, _rip_paused
 
 
 KCS_LOW, KCS_TOPUP = 1.50, 0.50  # keep ~$2 KCS per acct for the fee rebate
@@ -528,54 +519,9 @@ async def taker_rate(_sess, sym):
     return None               # unknown: allowed, learned on first fill
 
 
-_kcs_px, _kcs_px_ts = 0.0, 0.0
-
-
-async def _kcs_usdt():
-    """KCS mark price in USDT, cached ~60s."""
-    global _kcs_px, _kcs_px_ts
-    if _kcs_px and time.time() - _kcs_px_ts < 60:
-        return _kcs_px
-    try:
-        d = await kp._req("GET", "/api/v1/market/orderbook/level1",
-                          params={"symbol": "KCS-USDT"})
-        px = float((d or {}).get("price") or 0)
-        if px > 0:
-            _kcs_px, _kcs_px_ts = px, time.time()
-    except Exception:
-        pass
-    return _kcs_px
-
-
-async def _kcs_settled_fee(order_id):
-    """True fee when the account pays fees in KCS: sum the ledger's
-    KCS fee-deduction entries for this order, converted to USDT.
-    None when the order was fee'd in the quote currency instead."""
-    if not order_id:
-        return None
-    for attempt in range(2):          # the deduction lags the fill ~1s
-        try:
-            d = await kp._req("GET", "/api/v1/accounts/ledgers",
-                              params={"currency": "KCS",
-                                      "direction": "out",
-                                      "pageSize": 50})
-            amt = sum(float(it.get("amount") or 0)
-                      for it in (d or {}).get("items", [])
-                      if order_id in str(it.get("context") or ""))
-            if amt > 0:
-                px = await _kcs_usdt()
-                return amt * px if px else None
-            if attempt == 0:
-                await asyncio.sleep(1.2)
-        except Exception:
-            return None
-    return None
-
-
 async def fill_fee_usdt(sym, side, p):
-    """Real fee from our newest fill on `side`, in USDT. When the
-    account pays fees in KCS the ledger deduction is the true cost
-    (~20% below the nominal USDT fee). None if no fill found."""
+    """Real fee from our newest fill on `side`, converted to USDT.
+    Returns None if no fill is found."""
     try:
         fs = await kp.fills(sym)
         f = next((x for x in fs if x["side"] == side
@@ -590,8 +536,7 @@ async def fill_fee_usdt(sym, side, p):
         if side == "buy":
             _fee_rate[sym] = round(
                 fee / max(1e-9, float(f.get("funds") or 0)) * 100, 3)
-        settled = await _kcs_settled_fee(f.get("orderId"))
-        return settled if settled is not None else fee
+        return fee
     except Exception:
         return None
 
@@ -644,7 +589,9 @@ async def scan(sess):
                 for s, p in positions.items()
                 if p.get("acct", "margin") == "margin")
     mroom = max(0.0, 1.1 * meq - mopen)
-    regime = await btc_regime(sess)
+    r1b = await fetch_bars(sess, "BTC-USDT")
+    regime = await btc_regime(sess, r1b)
+    dip_pause, rip_pause = btc_dip_rip(r1b)
     lc, sc = [], []
     for sym, px in syms.items():
         if sym in positions or not px:
@@ -697,6 +644,8 @@ async def scan(sess):
                 row["blocked"] = "thin range dip"
             elif regime < 0:
                 row["blocked"] = "btc bleeding"
+            elif dip_pause:
+                row["blocked"] = "btc dip"
             elif dying:
                 row["blocked"] = "dying coin"
             elif not enabled_long or not rr_ok:
@@ -735,6 +684,8 @@ async def scan(sess):
                 row["blocked"] = "thin range rip"
             elif regime > 0:
                 row["blocked"] = "btc ripping"
+            elif rip_pause:
+                row["blocked"] = "btc rip"
             elif not m.get("isMarginEnabled"):
                 row["blocked"] = "not marginable"
             elif not enabled_short or not rr_ok:
@@ -766,7 +717,8 @@ async def scan(sess):
         (lc if zpos <= 0.5 else sc).append(row)
     _cands = {"long": lc[:40], "short": sc[:40],
               "info": {"watched": len(syms), "margin_eq": meq,
-                       "spot_usdt": susdt}}
+                       "spot_usdt": susdt, "btc_dip": dip_pause,
+                       "btc_rip": rip_pause}}
 
 
 _last_bal_check = 0.0
