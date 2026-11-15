@@ -17,6 +17,8 @@ POSF = os.environ.get("POS_PATH", "/app/state/grok2_positions.json")
 PORT = int(os.environ.get("PORT", 8386))
 FEE = float(os.environ.get("FEE_PCT", 0.1)) / 100
 POT_USE = 0.9            # 90% of available account equity — no other cap
+MIN_NOTIONAL = 8.0       # sub-$8 trades can't beat ~5c round-trip fees —
+                         # skip them entirely (dust positions)
 PAPER_POT = 20.0         # pretend balance for paper mode
 TOP_N = int(os.environ.get("TOP_N", 30))
 # structure
@@ -287,8 +289,8 @@ async def open_pos(sym, side, px, stop, S, meta):
                 # impossible to exceed 1x
                 spot = float(meta.get("spot_usdt") or 0)
                 spend = round(spot * POT_USE, 2)
-                if spend < 1.0:
-                    print(f"grok2 skip {sym}: no spot ${spot:.2f}",
+                if spend < MIN_NOTIONAL:
+                    print(f"grok2 skip {sym}: dust ${spot:.2f}",
                           flush=True)
                     return None
                 qty = int(spend / px / inc) * inc
@@ -311,8 +313,8 @@ async def open_pos(sym, side, px, stop, S, meta):
             else:
                 eq = float(meta.get("margin_eq") or 0)
                 spend = round(eq * POT_USE, 2)
-                if spend < 1.0:
-                    print(f"grok2 skip {sym}: no margin ${eq:.2f}",
+                if spend < MIN_NOTIONAL:
+                    print(f"grok2 skip {sym}: dust margin ${eq:.2f}",
                           flush=True)
                     return None
                 qty = int(spend / px / inc) * inc
