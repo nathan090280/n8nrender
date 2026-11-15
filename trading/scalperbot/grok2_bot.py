@@ -389,14 +389,17 @@ async def btc_regime(sess, r1=None):
         return 0
 
 
-DIP_BARS, DIP_TRIG, DIP_CLEAR = 8, 0.7, 0.3  # 15m×8 = 2h window
+DIP_BARS = 8                       # 15m×8 = 2h window
+DIP_TRIG, DIP_CLEAR = 0.7, 0.3     # longs: pause >0.7% under 2h high
+RIP_TRIG, RIP_CLEAR = 2.5, 1.2     # shorts: only a real pump (>2.5%
+                                   # over 2h low) — above-low is normal
 _dip_paused, _rip_paused = False, False
 
 
 def btc_dip_rip(r1):
     """Drawdown detectors with hysteresis (experiment, DIP_GATE=0 to off).
     Longs pause while BTC sits >0.7% under its 2h high, release within
-    0.3%; shorts pause >0.7% over the 2h low, release within 0.3%."""
+    0.3%; shorts pause >2.5% over the 2h low, release within 1.2%."""
     global _dip_paused, _rip_paused
     if os.environ.get("DIP_GATE", "1") == "0" or len(r1) < DIP_BARS + 1:
         _dip_paused = _rip_paused = False
@@ -406,7 +409,7 @@ def btc_dip_rip(r1):
     dd = (px / max(float(b[2]) for b in w) - 1) * 100
     up = (px / min(float(b[3]) for b in w) - 1) * 100
     _dip_paused = dd <= -DIP_TRIG or (_dip_paused and dd < -DIP_CLEAR)
-    _rip_paused = up >= DIP_TRIG or (_rip_paused and up > DIP_CLEAR)
+    _rip_paused = up >= RIP_TRIG or (_rip_paused and up > RIP_CLEAR)
     return _dip_paused, _rip_paused
 
 
